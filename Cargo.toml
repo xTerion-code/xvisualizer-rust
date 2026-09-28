@@ -1,0 +1,15 @@
+[package]
+name = "xvisualizer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chrono = "0.4"
+ctrlc = "3"
+crossterm = "0.29"
+rustfft = "6"
+libpulse-binding = "2"
+libpulse-simple-binding = "2"
+
+[profile.release]
+opt-level = 3
