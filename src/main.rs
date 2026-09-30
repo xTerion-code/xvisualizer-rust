@@ -17,7 +17,7 @@ const RATE: u32 = 48_000;
 const WINDOW: usize = 2048;
 const READ_FRAMES: usize = 512;
 
-/// Возвращает монитор дефолтного синка (то, что сейчас играет).
+/// Returns the monitor of the default sink (whatever is currently playing).
 fn detect_monitor() -> Option<String> {
     let sinks = Command::new("pactl")
         .arg("list")
@@ -39,7 +39,7 @@ fn detect_monitor() -> Option<String> {
         return None;
     }
 
-    // монитор дефолтного синка в приоритете
+    // Prefer the monitor of the default sink.
     if let Ok(o) = Command::new("pactl").arg("get-default-sink").output() {
         let sink = String::from_utf8_lossy(&o.stdout).trim().to_string();
         if !sink.is_empty() {
@@ -53,16 +53,16 @@ fn detect_monitor() -> Option<String> {
 }
 
 fn capture_loop(buf: Arc<Mutex<VecDeque<f32>>>, monitor: Option<String>, running: Arc<AtomicBool>) {
-    // Просим стерео и усредняем в моно: мониторы Pulse обычно стерео,
-    // запись 1 канала давала бы только левый.
+    // Request stereo and average down to mono: Pulse monitors are usually stereo,
+    // recording a single channel would capture the left channel only.
     let spec = Spec {
         format: Format::S16le,
         channels: 2,
         rate: RATE,
     };
     let dev = monitor.as_deref();
-    // Низкая задержка: дефолтный fragsize у Pulse ~2с — именно он давал
-    // опоздание на секунды. Просим куски по ~10мс и маленький буфер (~43мс).
+    // Low latency: Pulse's default fragsize is ~2s — that was the source of the
+    // multi-second delay. Request ~10ms chunks and a small buffer (~43ms).
     let attr = BufferAttr {
         maxlength: 8192,
         tlength: u32::MAX,
@@ -95,7 +95,7 @@ fn capture_loop(buf: Arc<Mutex<VecDeque<f32>>>, monitor: Option<String>, running
             thread::sleep(Duration::from_millis(50));
             continue;
         }
-        // Декодируем БЕЗ удержания мьютекса, затем один короткий lock.
+        // Decode WITHOUT holding the mutex, then take one short lock.
         for (i, frame) in raw.as_chunks::<4>().0.iter().enumerate() {
             let l = i16::from_le_bytes([frame[0], frame[1]]) as f32;
             let r = i16::from_le_bytes([frame[2], frame[3]]) as f32;
@@ -106,7 +106,8 @@ fn capture_loop(buf: Arc<Mutex<VecDeque<f32>>>, monitor: Option<String>, running
             Err(_) => return,
         };
         q.extend(mono.iter().copied());
-        // Короткая очередь (~170мс): старое стирается сразу, нового залежалого нет.
+        // Short queue (~170ms): old samples are discarded immediately,
+        // nothing stale piles up.
         let excess = q.len().saturating_sub(8192);
         if excess > 0 {
             q.drain(..excess);
@@ -114,7 +115,7 @@ fn capture_loop(buf: Arc<Mutex<VecDeque<f32>>>, monitor: Option<String>, running
     }
 }
 
-/// Гарант возврата терминала в нормальное состояние (включая panic).
+/// Guarantees the terminal is restored to a normal state (including on panic).
 struct TerminalGuard;
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
@@ -130,14 +131,14 @@ struct Args {
 }
 
 fn print_help() {
-    println!("xvisualizer — ASCII-визуалайзер системного аудио");
+    println!("xvisualizer — ASCII visualizer for system audio");
     println!();
-    println!("Использование: xvisualizer [ОПЦИИ]");
+    println!("Usage: xvisualizer [OPTIONS]");
     println!();
-    println!("Опции:");
-    println!("  -d, --device NAME Pulse-источник (по умолчанию авто-монитор дефолтного синка)");
-    println!("      --no-color    без ANSI-цветов");
-    println!("  -h, --help        показать эту справку");
+    println!("Options:");
+    println!("  -d, --device NAME Pulse source (default: auto-detected monitor of the default sink)");
+    println!("      --no-color    disable ANSI colors");
+    println!("  -h, --help        show this help");
 }
 
 fn parse_args() -> Args {
@@ -152,14 +153,14 @@ fn parse_args() -> Args {
             }
             "-d" | "--device" => {
                 let v = it.next().unwrap_or_else(|| {
-                    eprintln!("ошибка: {a} требует имя устройства");
+                    eprintln!("error: {a} requires a device name");
                     std::process::exit(2);
                 });
                 device = Some(v);
             }
             "--no-color" => no_color = true,
             _ => {
-                eprintln!("ошибка: неизвестный флаг '{a}'. См. xvisualizer --help");
+                eprintln!("error: unknown flag '{a}'. See xvisualizer --help");
                 std::process::exit(2);
             }
         }
@@ -181,8 +182,8 @@ fn truncate_chars(s: &str, max: usize) -> &str {
 
 fn main() -> io::Result<()> {
     let args = parse_args();
-    // Фиксированный высокий рефреш для максимально плавной анимации,
-    // без пользовательской системы FPS.
+    // Fixed high refresh rate for maximally smooth animation,
+    // no user-facing FPS system.
     const FRAME_TIME: Duration = Duration::from_nanos(1_000_000_000 / 120);
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
@@ -201,7 +202,7 @@ fn main() -> io::Result<()> {
         thread::spawn(move || capture_loop(b, m, run));
     }
 
-    // ждём первые данные (или тишину — нули тоже данные)
+    // Wait for the first data (silence — zeros — counts as data too).
     thread::sleep(Duration::from_millis(120));
 
     let mut planner = FftPlanner::<f32>::new();
@@ -210,12 +211,12 @@ fn main() -> io::Result<()> {
     let mut samples = vec![0.0f32; WINDOW];
     let mut mags = vec![0.0f32; WINDOW / 2];
 
-    // окно Ханна
+    // Hann window.
     let hann: Vec<f32> = (0..WINDOW)
         .map(|n| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * n as f32 / WINDOW as f32).cos()))
         .collect();
 
-    // логарифмическая сетка бинов: 30 Гц .. 16 кГц
+    // Logarithmic bin grid: 30 Hz .. 16 kHz.
     let bin_hz = RATE as f32 / WINDOW as f32;
     let f_min = 30.0_f32;
     let f_max = 16_000.0_f32;
@@ -227,37 +228,37 @@ fn main() -> io::Result<()> {
     }
 
     let mut bars = vec![0.0f32; max_bar_count];
-    let mut caps = vec![0.0f32; max_bar_count]; // падающие пиковые метки
+    let mut caps = vec![0.0f32; max_bar_count]; // falling peak markers
     let mut bar_h = vec![0.0f32; max_bar_count];
     let mut cap_rows = vec![0usize; max_bar_count];
-    let mut peak = 1e-3f32; // адаптивное усиление
+    let mut peak = 1e-3f32; // adaptive gain
 
     let mut stdout = io::stdout();
     execute!(stdout, terminal::EnterAlternateScreen)?;
     execute!(stdout, cursor::Hide)?;
     let _term_guard = TerminalGuard;
 
-    // Переиспользуемый буфер кадра: один write + flush за кадр.
+    // Reused frame buffer: a single write + flush per frame.
     let mut frame = String::with_capacity(80 * 30);
     let mut prev = Instant::now();
 
     while running.load(Ordering::SeqCst) {
         let frame_start = Instant::now();
-        // dt для плавного затухания (clamp от скачков при ресайзе/лагах).
+        // dt for smooth decay (clamped against resize/lag spikes).
         let dt = frame_start
             .duration_since(prev)
             .as_secs_f32()
             .clamp(0.001, 0.05);
         prev = frame_start;
-        // Плавно, но с мгновенной реакцией: атака очень быстрая (тау ~12мс,
-        // 1-2 кадра при 120Гц), спад мягкий (тау ~160мс). Усиление адаптируется
-        // за ~0.4с, пики падают за ~0.8с вместо ~3с.
+        // Smooth yet instantly responsive: very fast attack (tau ~12ms,
+        // 1-2 frames at 120Hz), soft release (tau ~160ms). The gain adapts
+        // in ~0.4s, peaks fall in ~0.8s.
         let k_atk = 1.0 - (-dt / 0.012).exp();
         let k_rel = 1.0 - (-dt / 0.16).exp();
         let peak_keep = (-dt / 0.4).exp();
         let cap_fall = dt * 1.2;
 
-        // --- взять окно сэмплов (короткий lock, без аллокаций) ---
+        // --- grab the sample window (short lock, no allocations) ---
         {
             let q = match buf.lock() {
                 Ok(q) => q,
@@ -265,7 +266,7 @@ fn main() -> io::Result<()> {
             };
             let n = q.len().min(WINDOW);
             let skip = q.len() - n;
-            // Новые данные — в конце окна, недостающее начало — тишина.
+            // New data goes at the end of the window, the missing head is silence.
             let offset = WINDOW - n;
             samples[..offset].fill(0.0);
             for (dst, src) in samples[offset..].iter_mut().zip(q.iter().skip(skip)) {
@@ -277,7 +278,7 @@ fn main() -> io::Result<()> {
         }
         fft.process(&mut spectrum);
 
-        // --- магнитуды ---
+        // --- magnitudes ---
         let mut frame_max = 1e-6f32;
         for (i, m) in mags.iter_mut().enumerate() {
             let c = spectrum[i + 1];
@@ -287,10 +288,10 @@ fn main() -> io::Result<()> {
                 frame_max = v;
             }
         }
-        // автоволюм: быстрая атака, медленный спад
+        // Auto-volume: fast attack, slow release.
         peak = frame_max.max(peak * peak_keep).max(1e-4);
 
-        // --- размер ---
+        // --- size ---
         let (cols, rows) = terminal::size().unwrap_or((80, 24));
         let cols = cols as usize;
         let rows = rows as usize;
@@ -298,7 +299,7 @@ fn main() -> io::Result<()> {
         let area_h = rows.saturating_sub(footer_h).max(5);
         let n_bars = ((cols.saturating_sub(4)) / 2).clamp(8, max_bar_count);
 
-        // --- бары + пики (инерционные, без ступенек) ---
+        // --- bars + peaks (inertial, no stepping) ---
         for i in 0..n_bars {
             let lo = edges[i * max_bar_count / n_bars].min(WINDOW / 2 - 1);
             let hi = edges[(i + 1) * max_bar_count / n_bars]
@@ -306,15 +307,15 @@ fn main() -> io::Result<()> {
                 .min(WINDOW / 2);
             let m = mags[lo..hi].iter().copied().fold(0.0f32, f32::max);
             let norm = (m / peak).clamp(0.0, 1.0);
-            let target = norm.powf(0.6); // гамма — тихие частоты виднее
+            let target = norm.powf(0.6); // gamma — quiet frequencies stay visible
             let b = bars[i];
-            // Плавно тянемся к цели: вверх быстро, вниз медленно.
+            // Ease towards the target: fast up, slow down.
             if target > b {
                 bars[i] = b + (target - b) * k_atk;
             } else {
                 bars[i] = b + (target - b) * k_rel;
             }
-            // Пиковая метка: мгновенно вверх, линейно медленно вниз.
+            // Peak marker: instantly up, linearly slowly down.
             if target >= caps[i] {
                 caps[i] = target;
             } else {
@@ -324,18 +325,18 @@ fn main() -> io::Result<()> {
             cap_rows[i] = ((caps[i] * area_h as f32).round() as usize).min(area_h);
         }
 
-        // --- рендер в буфер фиксированной высоты (без Clear → без мигания) ---
+        // --- render into a fixed-height buffer (no Clear → no flicker) ---
         let width = n_bars * 2 - 1;
         let pad_x = cols.saturating_sub(width) / 2;
         frame.clear();
-        // Верхняя строка области; курсор ставим один раз.
+        // Top row of the area; position the cursor once.
         use std::fmt::Write as _;
         let _ = write!(frame, "\x1b[H");
         let pad: String = " ".repeat(pad_x);
         let use_color = !args.no_color;
         for row in (0..area_h).rev() {
             frame.push_str(&pad);
-            // Цвет строки по высоте: зелёный → жёлтый → красный.
+            // Row color by height: green → yellow → red.
             if use_color {
                 let ratio = row as f32 / area_h.max(1) as f32;
                 if ratio >= 0.85 {
@@ -347,8 +348,8 @@ fn main() -> io::Result<()> {
                 }
             }
             for i in 0..n_bars {
-                // Дробная высота: целая часть — полные блоки,
-                // дробная — 1/8-блоки для субклеточной плавности.
+                // Fractional height: the integer part is full blocks,
+                // the fraction is 1/8-blocks for sub-cell smoothness.
                 let fh = bar_h[i];
                 let full = fh.floor() as usize;
                 let frac = fh - full as f32;
@@ -356,12 +357,12 @@ fn main() -> io::Result<()> {
                     frame.push('█');
                 } else if row == full {
                     let idx = ((frac * 8.0).round() as usize).min(8);
-                    // 1/8-блоки снизу вверх
+                    // 1/8-blocks, bottom to top.
                     const PARTS: [char; 9] =
                         [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
                     let ch = PARTS[idx];
                     if ch == ' ' {
-                        // пусто — может быть пиковая метка
+                        // Empty — may hold a peak marker.
                         if cap_rows[i] == row + 1 && cap_rows[i] <= area_h {
                             if use_color {
                                 frame.push_str("\x1b[0m\x1b[36m─\x1b[0m");
@@ -383,10 +384,10 @@ fn main() -> io::Result<()> {
                         frame.push(ch);
                     }
                 } else if cap_rows[i] > row && cap_rows[i] <= area_h && (cap_rows[i] == row + 1) {
-                    // пиковая метка ровно на одну клетку выше/на вершине
+                    // Peak marker exactly one cell above/at the top.
                     if use_color {
                         frame.push_str("\x1b[0m\x1b[36m─\x1b[0m");
-                        // вернуть цвет строки для следующих клеток
+                        // Restore the row color for the following cells.
                         let ratio = row as f32 / area_h.max(1) as f32;
                         if ratio >= 0.85 {
                             frame.push_str("\x1b[31m");
@@ -420,10 +421,10 @@ fn main() -> io::Result<()> {
             if use_color {
                 frame.push_str("\x1b[0m");
             }
-            // Затереть остатки прошлой длинной строки при сужении.
+            // Erase leftovers of a previously longer line when shrinking.
             frame.push_str("\x1b[K\n");
         }
-        // футер: ровно footer_h строк для фиксированной геометрии
+        // Footer: exactly footer_h lines for a fixed geometry.
         let src = monitor.as_deref().unwrap_or("mic/default");
         let short = truncate_chars(src, 40);
         let foot = format!("{short}  |  Ctrl+C");
@@ -437,7 +438,7 @@ fn main() -> io::Result<()> {
         stdout.write_all(frame.as_bytes())?;
         stdout.flush()?;
 
-        // Фиксированный высокий рефреш: спим остаток до ~120 Гц.
+        // Fixed high refresh: sleep the remainder up to ~120 Hz.
         let elapsed = frame_start.elapsed();
         if elapsed < FRAME_TIME {
             thread::sleep(FRAME_TIME - elapsed);
