@@ -11,6 +11,9 @@ Terminal ASCII visualizer for system audio: low-latency PulseAudio monitor captu
 - Fixed ~120 Hz render loop, inertial bar smoothing (fast attack, soft release)
 - Sub-cell bar tops (`▁▂▃▄▅▆▇█`) plus falling peak markers (`─`)
 - Row colors by height: green → yellow → red, `--no-color` to disable
+- Two bar themes with an in-program menu (arrows + Enter):
+  `Classic` (thin bars with gaps) and `Solid` (wide bars without gaps).
+  Press `T`/`Tab` or any arrow to open the menu, `1`/`2` for a quick switch
 - Bar count adapts to terminal width (8–64), flicker-free single-write frames
 - Alternate screen: the terminal is restored on exit
 - `Ctrl+C` exit with cursor and screen restored
@@ -29,14 +32,25 @@ cd xvisualizer-rust
 cargo run --release
 ```
 
-Exit: `Ctrl+C`.
+Exit: `Ctrl+C` or `Q`.
 
 ## Options
 
 ```text
 -d, --device NAME   Pulse source (default: auto-detected monitor of the default sink)
+-t, --theme NAME    start theme: classic | solid (default: classic)
     --no-color      disable ANSI colors
 -h, --help          show help
+```
+
+Keys (in program):
+
+```text
+Up/Down or Left/Right  choose theme in the menu
+Enter                  apply theme
+T / Tab                open theme menu, Esc - back
+1 / 2                  quick theme switch
+Q or Ctrl+C            quit
 ```
 
 Examples:
@@ -44,6 +58,7 @@ Examples:
 ```bash
 cargo run --release -- --device alsa_output.pci-0000_00_1f.3.analog-stereo.monitor
 cargo run --release -- --no-color
+cargo run --release -- --theme solid
 ```
 
 ## Example
@@ -81,15 +96,23 @@ End-to-end latency is roughly: ~10 ms (fragment) + ~21 ms (FFT window center) + 
 
 ```text
 src/
-  main.rs    — everything: arg parsing, Pulse capture, FFT, smoothing, rendering
+  main.rs      — entry point and frame-loop orchestration
+  args.rs      — CLI parsing (device, theme, color flags)
+  audio.rs     — PulseAudio monitor capture into a sample queue
+  dsp.rs       — Hann window, FFT, log bands, adaptive gain, smoothing
+  theme.rs     — bar-style themes (geometry and names)
+  input.rs     — keyboard: theme menu navigation (arrows + Enter), hotkeys
+  render.rs    — frame building: theme menu and spectrum visualizer
+  terminal.rs  — alternate screen / raw mode setup and restore
 ```
 
-Extension points (all in `src/main.rs`):
+Extension points:
 
-- different source / latency — `capture_loop()`, `BufferAttr`, `READ_FRAMES`
-- different spectrum — `WINDOW`, Hann table, `f_min`/`f_max`, gamma
-- different motion — `k_atk`/`k_rel`, `peak_keep`, `cap_fall`
-- different look — render loop, `PARTS`, color thresholds, footer
+- different source / latency — `audio.rs`: `capture_loop()`, `BufferAttr`, `READ_FRAMES`
+- different spectrum — `dsp.rs`: `WINDOW`, Hann table, `F_MIN`/`F_MAX`, `GAMMA`
+- different motion — `dsp.rs`: attack/release taus, gain release, peak fall
+- different look — `theme.rs` (`dims`, new themes) and `render.rs` (`PARTS`, color thresholds, footer)
+- different keys — `input.rs`: `handle_menu_key()`, `handle_visualizer_key()`
 
 ## Development
 
