@@ -7,6 +7,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crossterm::{cursor, execute, terminal};
+use libpulse_binding::def::BufferAttr;
 use libpulse_binding::sample::{Format, Spec};
 use libpulse_binding::stream::Direction;
 use libpulse_simple_binding::Simple;
@@ -14,7 +15,7 @@ use rustfft::{num_complex::Complex, FftPlanner};
 
 const RATE: u32 = 48_000;
 const WINDOW: usize = 2048;
-const READ_FRAMES: usize = 1024;
+const READ_FRAMES: usize = 512;
 
 /// Возвращает монитор дефолтного синка (то, что сейчас играет).
 fn detect_monitor() -> Option<String> {
@@ -60,6 +61,15 @@ fn capture_loop(buf: Arc<Mutex<VecDeque<f32>>>, monitor: Option<String>, running
         rate: RATE,
     };
     let dev = monitor.as_deref();
+    // Низкая задержка: дефолтный fragsize у Pulse ~2с — именно он давал
+    // опоздание на секунды. Просим куски по ~10мс и маленький буфер (~43мс).
+    let attr = BufferAttr {
+        maxlength: 8192,
+        tlength: u32::MAX,
+        prebuf: u32::MAX,
+        minreq: u32::MAX,
+        fragsize: (READ_FRAMES * 4) as u32,
+    };
     let simple = match Simple::new(
         None,
         "xvisualizer",
@@ -68,7 +78,7 @@ fn capture_loop(buf: Arc<Mutex<VecDeque<f32>>>, monitor: Option<String>, running
         "capture",
         &spec,
         None,
-        None,
+        Some(&attr),
     ) {
         Ok(s) => s,
         Err(e) => {
@@ -96,7 +106,8 @@ fn capture_loop(buf: Arc<Mutex<VecDeque<f32>>>, monitor: Option<String>, running
             Err(_) => return,
         };
         q.extend(mono.iter().copied());
-        let excess = q.len().saturating_sub(RATE as usize);
+        // Короткая очередь (~170мс): старое стирается сразу, нового залежалого нет.
+        let excess = q.len().saturating_sub(8192);
         if excess > 0 {
             q.drain(..excess);
         }
@@ -114,7 +125,6 @@ impl Drop for TerminalGuard {
 }
 
 struct Args {
-    fps: u32,
     device: Option<String>,
     no_color: bool,
 }
@@ -125,14 +135,12 @@ fn print_help() {
     println!("Использование: xvisualizer [ОПЦИИ]");
     println!();
     println!("Опции:");
-    println!("  -f, --fps N       скорость обновления столбиков, кадров/сек (1–240, по умолчанию 30)");
     println!("  -d, --device NAME Pulse-источник (по умолчанию авто-монитор дефолтного синка)");
     println!("      --no-color    без ANSI-цветов");
     println!("  -h, --help        показать эту справку");
 }
 
 fn parse_args() -> Args {
-    let mut fps = 30u32;
     let mut device: Option<String> = None;
     let mut no_color = false;
     let mut it = std::env::args().skip(1);
@@ -141,20 +149,6 @@ fn parse_args() -> Args {
             "-h" | "--help" => {
                 print_help();
                 std::process::exit(0);
-            }
-            "-f" | "--fps" => {
-                let v = it.next().unwrap_or_else(|| {
-                    eprintln!("ошибка: {a} требует значение (1–240)");
-                    std::process::exit(2);
-                });
-                fps = v.parse().unwrap_or_else(|_| {
-                    eprintln!("ошибка: fps должно быть числом, получено '{v}'");
-                    std::process::exit(2);
-                });
-                if !(1..=240).contains(&fps) {
-                    eprintln!("ошибка: fps должен быть 1–240, получено {fps}");
-                    std::process::exit(2);
-                }
             }
             "-d" | "--device" => {
                 let v = it.next().unwrap_or_else(|| {
@@ -170,11 +164,7 @@ fn parse_args() -> Args {
             }
         }
     }
-    Args {
-        fps,
-        device,
-        no_color,
-    }
+    Args { device, no_color }
 }
 
 fn truncate_chars(s: &str, max: usize) -> &str {
@@ -191,7 +181,9 @@ fn truncate_chars(s: &str, max: usize) -> &str {
 
 fn main() -> io::Result<()> {
     let args = parse_args();
-    let frame_time = Duration::from_secs_f64(1.0 / args.fps as f64);
+    // Фиксированный высокий рефреш для максимально плавной анимации,
+    // без пользовательской системы FPS.
+    const FRAME_TIME: Duration = Duration::from_nanos(1_000_000_000 / 120);
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
     let _ = ctrlc::set_handler(move || {
@@ -201,7 +193,7 @@ fn main() -> io::Result<()> {
     let monitor = args.device.clone().or_else(detect_monitor);
 
     let buf: Arc<Mutex<VecDeque<f32>>> =
-        Arc::new(Mutex::new(VecDeque::with_capacity(RATE as usize)));
+        Arc::new(Mutex::new(VecDeque::with_capacity(8192)));
     {
         let b = buf.clone();
         let m = monitor.clone();
@@ -210,7 +202,7 @@ fn main() -> io::Result<()> {
     }
 
     // ждём первые данные (или тишину — нули тоже данные)
-    thread::sleep(Duration::from_millis(400));
+    thread::sleep(Duration::from_millis(120));
 
     let mut planner = FftPlanner::<f32>::new();
     let fft = planner.plan_fft_forward(WINDOW);
@@ -236,7 +228,7 @@ fn main() -> io::Result<()> {
 
     let mut bars = vec![0.0f32; max_bar_count];
     let mut caps = vec![0.0f32; max_bar_count]; // падающие пиковые метки
-    let mut heights = vec![0usize; max_bar_count];
+    let mut bar_h = vec![0.0f32; max_bar_count];
     let mut cap_rows = vec![0usize; max_bar_count];
     let mut peak = 1e-3f32; // адаптивное усиление
 
@@ -251,17 +243,19 @@ fn main() -> io::Result<()> {
 
     while running.load(Ordering::SeqCst) {
         let frame_start = Instant::now();
-        // dt для FPS-независимого затухания (кlamp от скачков при ресайзе/лагах).
+        // dt для плавного затухания (clamp от скачков при ресайзе/лагах).
         let dt = frame_start
             .duration_since(prev)
             .as_secs_f32()
-            .clamp(0.001, 0.25);
+            .clamp(0.001, 0.05);
         prev = frame_start;
-        // Коэффициенты подобраны так, чтобы при 30 fps совпадать со старыми
-        // 0.995 (peak) и 0.88 (bars), но вести себя одинаково при любом fps.
-        let peak_keep = 0.995f32.powf(dt * 30.0);
-        let bar_keep = 0.88f32.powf(dt * 30.0);
-        let cap_keep = 0.97f32.powf(dt * 30.0);
+        // Плавно, но с мгновенной реакцией: атака очень быстрая (тау ~12мс,
+        // 1-2 кадра при 120Гц), спад мягкий (тау ~160мс). Усиление адаптируется
+        // за ~0.4с, пики падают за ~0.8с вместо ~3с.
+        let k_atk = 1.0 - (-dt / 0.012).exp();
+        let k_rel = 1.0 - (-dt / 0.16).exp();
+        let peak_keep = (-dt / 0.4).exp();
+        let cap_fall = dt * 1.2;
 
         // --- взять окно сэмплов (короткий lock, без аллокаций) ---
         {
@@ -304,7 +298,7 @@ fn main() -> io::Result<()> {
         let area_h = rows.saturating_sub(footer_h).max(5);
         let n_bars = ((cols.saturating_sub(4)) / 2).clamp(8, max_bar_count);
 
-        // --- бары + пики ---
+        // --- бары + пики (инерционные, без ступенек) ---
         for i in 0..n_bars {
             let lo = edges[i * max_bar_count / n_bars].min(WINDOW / 2 - 1);
             let hi = edges[(i + 1) * max_bar_count / n_bars]
@@ -313,9 +307,20 @@ fn main() -> io::Result<()> {
             let m = mags[lo..hi].iter().copied().fold(0.0f32, f32::max);
             let norm = (m / peak).clamp(0.0, 1.0);
             let target = norm.powf(0.6); // гамма — тихие частоты виднее
-            bars[i] = target.max(bars[i] * bar_keep);
-            caps[i] = target.max(caps[i] * cap_keep);
-            heights[i] = ((bars[i] * area_h as f32).round() as usize).min(area_h);
+            let b = bars[i];
+            // Плавно тянемся к цели: вверх быстро, вниз медленно.
+            if target > b {
+                bars[i] = b + (target - b) * k_atk;
+            } else {
+                bars[i] = b + (target - b) * k_rel;
+            }
+            // Пиковая метка: мгновенно вверх, линейно медленно вниз.
+            if target >= caps[i] {
+                caps[i] = target;
+            } else {
+                caps[i] = (caps[i] - cap_fall).max(target).max(0.0);
+            }
+            bar_h[i] = (bars[i] * area_h as f32).clamp(0.0, area_h as f32);
             cap_rows[i] = ((caps[i] * area_h as f32).round() as usize).min(area_h);
         }
 
@@ -342,9 +347,41 @@ fn main() -> io::Result<()> {
                 }
             }
             for i in 0..n_bars {
-                let h = heights[i];
-                if h > row {
+                // Дробная высота: целая часть — полные блоки,
+                // дробная — 1/8-блоки для субклеточной плавности.
+                let fh = bar_h[i];
+                let full = fh.floor() as usize;
+                let frac = fh - full as f32;
+                if row < full {
                     frame.push('█');
+                } else if row == full {
+                    let idx = ((frac * 8.0).round() as usize).min(8);
+                    // 1/8-блоки снизу вверх
+                    const PARTS: [char; 9] =
+                        [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+                    let ch = PARTS[idx];
+                    if ch == ' ' {
+                        // пусто — может быть пиковая метка
+                        if cap_rows[i] == row + 1 && cap_rows[i] <= area_h {
+                            if use_color {
+                                frame.push_str("\x1b[0m\x1b[36m─\x1b[0m");
+                                let ratio = row as f32 / area_h.max(1) as f32;
+                                if ratio >= 0.85 {
+                                    frame.push_str("\x1b[31m");
+                                } else if ratio >= 0.6 {
+                                    frame.push_str("\x1b[33m");
+                                } else {
+                                    frame.push_str("\x1b[32m");
+                                }
+                            } else {
+                                frame.push('─');
+                            }
+                        } else {
+                            frame.push(' ');
+                        }
+                    } else {
+                        frame.push(ch);
+                    }
                 } else if cap_rows[i] > row && cap_rows[i] <= area_h && (cap_rows[i] == row + 1) {
                     // пиковая метка ровно на одну клетку выше/на вершине
                     if use_color {
@@ -389,7 +426,7 @@ fn main() -> io::Result<()> {
         // футер: ровно footer_h строк для фиксированной геометрии
         let src = monitor.as_deref().unwrap_or("mic/default");
         let short = truncate_chars(src, 40);
-        let foot = format!("{short}  |  {} FPS  |  Ctrl+C", args.fps);
+        let foot = format!("{short}  |  Ctrl+C");
         let foot_w = foot.chars().count();
         let foot_x = cols.saturating_sub(foot_w) / 2;
         frame.push('\n');
@@ -400,10 +437,10 @@ fn main() -> io::Result<()> {
         stdout.write_all(frame.as_bytes())?;
         stdout.flush()?;
 
-        // Точный fps: спим остаток, а не полный frame_time.
+        // Фиксированный высокий рефреш: спим остаток до ~120 Гц.
         let elapsed = frame_start.elapsed();
-        if elapsed < frame_time {
-            thread::sleep(frame_time - elapsed);
+        if elapsed < FRAME_TIME {
+            thread::sleep(FRAME_TIME - elapsed);
         }
     }
 
