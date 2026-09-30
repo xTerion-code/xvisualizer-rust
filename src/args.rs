@@ -32,6 +32,8 @@ pub fn print_help() {
     println!("  Up/Down or Left/Right  choose theme in the menu");
     println!("  Enter                  apply theme");
     println!("  T / Tab                open theme menu, Esc - back");
+    println!("  S                      capture source: system mix or one app");
+    println!("  R (in source menu)     refresh the app list");
     println!("  1 / 2                  quick theme switch");
     println!("  Q or Ctrl+C            quit");
 }

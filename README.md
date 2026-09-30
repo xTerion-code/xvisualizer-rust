@@ -6,6 +6,9 @@ Terminal ASCII visualizer for system audio: low-latency PulseAudio monitor captu
 
 - System audio capture via the PulseAudio monitor source (works on PipeWire via its Pulse layer)
 - Auto-detects the monitor of the default sink, override with `--device`
+- Capture source menu (`S`): whole system mix or a single app/window.
+  Solo capture reroutes the app through a private null sink (with loopback,
+  so it stays audible) and restores everything on exit
 - Stereo capture averaged down to mono, 48 kHz / S16
 - 2048-point FFT with Hann window, logarithmic band grid 30 Hz – 16 kHz
 - Fixed ~120 Hz render loop, inertial bar smoothing (fast attack, soft release)
@@ -49,6 +52,8 @@ Keys (in program):
 Up/Down or Left/Right  choose theme in the menu
 Enter                  apply theme
 T / Tab                open theme menu, Esc - back
+S                      capture source: system mix or one app
+R (in source menu)     refresh the app list
 1 / 2                  quick theme switch
 Q or Ctrl+C            quit
 ```
@@ -103,12 +108,14 @@ src/
   theme.rs     — bar-style themes (geometry and names)
   input.rs     — keyboard: theme menu navigation (arrows + Enter), hotkeys
   render.rs    — frame building: theme menu and spectrum visualizer
+  source.rs    — capture source selection: app list, solo null-sink sessions
   terminal.rs  — alternate screen / raw mode setup and restore
 ```
 
 Extension points:
 
-- different source / latency — `audio.rs`: `capture_loop()`, `BufferAttr`, `READ_FRAMES`
+- different source / latency — `audio.rs`: `CaptureSession::switch()`, `BufferAttr`, `READ_FRAMES`
+- solo app capture — `source.rs`: `SoloSession`, stream rerouting via null sink + loopback
 - different spectrum — `dsp.rs`: `WINDOW`, Hann table, `F_MIN`/`F_MAX`, `GAMMA`
 - different motion — `dsp.rs`: attack/release taus, gain release, peak fall
 - different look — `theme.rs` (`dims`, new themes) and `render.rs` (`PARTS`, color thresholds, footer)

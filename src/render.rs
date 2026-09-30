@@ -8,6 +8,7 @@
 
 use std::fmt::Write as _;
 
+use crate::source::{CaptureTarget, PlaybackStream};
 use crate::theme::Theme;
 
 /// Footer height in rows; the bar area is terminal height minus this.
@@ -132,6 +133,102 @@ pub fn render_menu(
     }
 }
 
+/// Draws the capture source menu into `frame`.
+///
+/// Row 0 is always the system mix; rows 1.. mirror `apps`.
+/// Controls: arrows select, Enter captures, R refreshes the app list.
+pub fn render_source_menu(
+    frame: &mut String,
+    cols: usize,
+    rows: usize,
+    apps: &[PlaybackStream],
+    selected: usize,
+    target: &CaptureTarget,
+    use_color: bool,
+) {
+    frame.clear();
+    let _ = write!(frame, "\x1b[H");
+    let current_input = match target {
+        CaptureTarget::Stream(s) => Some(s.input),
+        CaptureTarget::System => None,
+    };
+
+    let mut lines: Vec<String> = Vec::with_capacity(apps.len() + 5);
+    lines.push("Select capture source".to_string());
+    lines.push("Up/Down - select  |  Enter - capture  |  R - refresh".to_string());
+    lines.push(String::new());
+    lines.push(menu_row(
+        0,
+        selected,
+        "System",
+        "everything you hear",
+        matches!(target, CaptureTarget::System),
+    ));
+    for (i, app) in apps.iter().enumerate() {
+        lines.push(menu_row(
+            i + 1,
+            selected,
+            &app.app,
+            &app.stream,
+            current_input == Some(app.input),
+        ));
+    }
+    if apps.is_empty() {
+        lines.push("(no apps playing audio right now)".to_string());
+    }
+    lines.push(String::new());
+    lines.push("Esc - back  |  Q - quit".to_string());
+
+    // Vertical centering.
+    let mut top = rows.saturating_sub(lines.len()) / 2;
+    for _ in 0..top {
+        frame.push_str("\x1b[K\r\n");
+    }
+    for (idx, line) in lines.iter().enumerate() {
+        let is_title = idx == 0;
+        let is_hint = idx == 1 || idx == lines.len() - 1;
+        let is_option = !is_title && !is_hint && !line.is_empty() && !line.starts_with('(');
+        if line.is_empty() {
+            frame.push_str("\x1b[K\r\n");
+            continue;
+        }
+        let x = center_x(cols, line.chars().count());
+        frame.push_str(&" ".repeat(x));
+        if is_title && use_color {
+            frame.push_str("\x1b[1;36m");
+        } else if is_hint && use_color {
+            frame.push_str("\x1b[90m");
+        } else if is_option && line.starts_with("> ") && use_color {
+            frame.push_str("\x1b[7m"); // reverse video
+        }
+        frame.push_str(line);
+        if (is_title || is_hint || (is_option && line.starts_with("> "))) && use_color {
+            frame.push_str("\x1b[0m");
+        }
+        if idx + 1 < lines.len() {
+            frame.push_str("\x1b[K\r\n");
+        } else {
+            frame.push_str("\x1b[K");
+        }
+    }
+    // Pad to the bottom so no visualizer leftovers remain on screen.
+    top += lines.len();
+    while top < rows {
+        frame.push_str("\r\n\x1b[K");
+        top += 1;
+    }
+}
+
+/// One selectable menu row: `> Name - detail  (current)`.
+fn menu_row(idx: usize, selected: usize, name: &str, detail: &str, is_current: bool) -> String {
+    let marker = if idx == selected { "> " } else { "  " };
+    let cur = if is_current { "  (current)" } else { "" };
+    if detail.is_empty() {
+        format!("{marker}{name}{cur}")
+    } else {
+        format!("{marker}{name} - {detail}{cur}")
+    }
+}
 /// Parameters for one visualizer frame.
 pub struct Visualizer<'a> {
     /// Smoothed bar levels (0..1).
@@ -152,6 +249,8 @@ pub struct Visualizer<'a> {
     pub source: &'a str,
     /// Active theme name for the footer.
     pub theme_name: &'a str,
+    /// Transient status message replacing the footer (errors, switch confirmations).
+    pub notice: Option<&'a str>,
 }
 
 /// Draws the spectrum bars into `frame` (fixed height, no clear, no flicker).
@@ -245,8 +344,17 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
         frame.push_str("\x1b[K\r\n");
     }
     // Footer: exactly FOOTER_HEIGHT lines for a fixed geometry.
-    let short = truncate_chars(v.source, 30);
-    let foot = format!("{short}  |  {}  |  T - themes  |  Q - quit", v.theme_name);
+    // A transient notice (errors, confirmations) replaces the footer.
+    let foot = match v.notice {
+        Some(msg) => truncate_chars(msg, 60).to_string(),
+        None => {
+            let short = truncate_chars(v.source, 30);
+            format!(
+                "{short}  |  {}  |  T - themes  |  S - source  |  Q - quit",
+                v.theme_name
+            )
+        }
+    };
     let foot_w = foot.chars().count();
     let foot_x = v.cols.saturating_sub(foot_w) / 2;
     frame.push_str("\r\n");

@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use libpulse_binding::def::BufferAttr;
@@ -59,18 +59,73 @@ pub fn detect_monitor() -> Option<String> {
     monitors.into_iter().next()
 }
 
-/// Starts the background capture thread and returns the shared sample queue.
-pub fn start_capture(
-    monitor: Option<String>,
-    running: Arc<AtomicBool>,
-) -> Arc<Mutex<VecDeque<f32>>> {
-    let buf: Arc<Mutex<VecDeque<f32>>> = Arc::new(Mutex::new(VecDeque::with_capacity(QUEUE_CAP)));
-    let b = buf.clone();
-    thread::spawn(move || capture_loop(b, monitor, running));
-    buf
+/// Restartable background capture writing into one shared sample queue.
+///
+/// The capture device can change at runtime (system monitor vs. solo sink),
+/// so the worker thread must be stoppable independently of the global
+/// `running` flag.
+pub struct CaptureSession {
+    queue: Arc<Mutex<VecDeque<f32>>>,
+    stop: Arc<AtomicBool>,
+    handle: Option<JoinHandle<()>>,
 }
 
-fn capture_loop(buf: Arc<Mutex<VecDeque<f32>>>, monitor: Option<String>, running: Arc<AtomicBool>) {
+impl CaptureSession {
+    /// Starts capturing `monitor` (None = default source).
+    pub fn start(monitor: Option<String>, running: Arc<AtomicBool>) -> Self {
+        let queue: Arc<Mutex<VecDeque<f32>>> =
+            Arc::new(Mutex::new(VecDeque::with_capacity(QUEUE_CAP)));
+        let stop = Arc::new(AtomicBool::new(false));
+        let handle = spawn_worker(queue.clone(), monitor, running, stop.clone());
+        Self {
+            queue,
+            stop,
+            handle: Some(handle),
+        }
+    }
+
+    /// Shared sample queue (stable across [`CaptureSession::switch`]).
+    pub fn queue(&self) -> &Arc<Mutex<VecDeque<f32>>> {
+        &self.queue
+    }
+
+    /// Stops the current worker, drops stale audio, and starts capturing
+    /// `monitor` instead. Blocks briefly while the old thread exits
+    /// (it wakes from blocking reads within ~10ms).
+    pub fn switch(&mut self, monitor: Option<String>, running: &Arc<AtomicBool>) {
+        self.stop.store(true, Ordering::SeqCst);
+        if let Some(h) = self.handle.take() {
+            let _ = h.join();
+        }
+        if let Ok(mut q) = self.queue.lock() {
+            q.clear();
+        }
+        let stop = Arc::new(AtomicBool::new(false));
+        self.stop = stop.clone();
+        self.handle = Some(spawn_worker(
+            self.queue.clone(),
+            monitor,
+            running.clone(),
+            stop,
+        ));
+    }
+}
+
+fn spawn_worker(
+    queue: Arc<Mutex<VecDeque<f32>>>,
+    monitor: Option<String>,
+    running: Arc<AtomicBool>,
+    stop: Arc<AtomicBool>,
+) -> JoinHandle<()> {
+    thread::spawn(move || capture_loop(queue, monitor, running, stop))
+}
+
+fn capture_loop(
+    buf: Arc<Mutex<VecDeque<f32>>>,
+    monitor: Option<String>,
+    running: Arc<AtomicBool>,
+    stop: Arc<AtomicBool>,
+) {
     // Request stereo and average down to mono: Pulse monitors are usually stereo,
     // recording a single channel would capture the left channel only.
     let spec = Spec {
@@ -108,7 +163,7 @@ fn capture_loop(buf: Arc<Mutex<VecDeque<f32>>>, monitor: Option<String>, running
 
     let mut raw = vec![0u8; READ_FRAMES * 4];
     let mut mono = vec![0.0f32; READ_FRAMES];
-    while running.load(Ordering::SeqCst) {
+    while running.load(Ordering::SeqCst) && !stop.load(Ordering::SeqCst) {
         if simple.read(&mut raw).is_err() {
             thread::sleep(Duration::from_millis(50));
             continue;
