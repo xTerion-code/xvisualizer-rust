@@ -1,17 +1,8 @@
-//! Command-line argument parsing.
-//!
-//! This module only deals with CLI flags. It performs no I/O
-//! besides printing help / errors.
-
 use crate::theme::Theme;
 
-/// Parsed command-line options.
 pub struct Args {
-    /// PulseAudio source name. `None` means auto-detect.
     pub device: Option<String>,
-    /// Disable ANSI colors.
     pub no_color: bool,
-    /// Initial theme. `None` means the default theme.
     pub theme: Option<Theme>,
 }
 

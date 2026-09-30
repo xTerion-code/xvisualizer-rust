@@ -1,31 +1,18 @@
-//! Capture source selection: system mix or a single app.
-//!
-//! PulseAudio/PipeWire can only record sources (monitors), not individual
-//! playback streams. Capturing one app therefore uses rerouting:
-//! a private null sink is created, the app's sink-input is moved there,
-//! and this app records the null sink's monitor. A loopback module routes
-//! the audio back to the original sink so it stays audible on speakers.
-//!
-//! All state is restored (stream moved back, modules unloaded) when the
-//! solo session ends, including on panic via [`SoloSession`]'s Drop impl.
+// Solo capture via rerouting: the app is moved to a private null sink
+// whose monitor is recorded, plus a loopback so it stays audible.
+// Dropping the session moves the stream back and unloads the modules.
 
 use std::process::Command;
 
-/// One playback stream (sink-input) currently producing audio.
 #[derive(Clone, Debug)]
 pub struct PlaybackStream {
-    /// Sink-input index (`pactl move-sink-input` target).
     pub input: u32,
-    /// Sink index the stream currently plays to (restored on stop).
     pub sink: u32,
-    /// Human-readable app name (`application.name` or binary fallback).
     pub app: String,
-    /// Stream name (`media.name` or fallback).
     pub stream: String,
 }
 
 impl PlaybackStream {
-    /// Short label for menus and the footer.
     pub fn label(&self) -> String {
         if self.stream.is_empty() || self.stream == self.app {
             self.app.clone()
@@ -35,18 +22,14 @@ impl PlaybackStream {
     }
 }
 
-/// What the visualizer captures.
 #[derive(Clone, Debug)]
 pub enum CaptureTarget {
-    /// Default monitor: the whole system mix.
     System,
-    /// A single playback stream via a solo session.
     Stream(PlaybackStream),
 }
 
 impl CaptureTarget {
-    /// Menu row index for this target given the current app list.
-    /// Row 0 is always "System", rows 1.. mirror `apps`.
+    // Row 0 is always System, rows 1.. mirror `apps`.
     pub fn menu_index(&self, apps: &[PlaybackStream]) -> usize {
         match self {
             CaptureTarget::System => 0,
@@ -58,7 +41,6 @@ impl CaptureTarget {
         }
     }
 
-    /// Short label for the footer.
     pub fn label(&self, system_label: &str) -> String {
         match self {
             CaptureTarget::System => system_label.to_string(),
@@ -67,14 +49,12 @@ impl CaptureTarget {
     }
 }
 
-/// Lists current playback streams via `pactl list sink-inputs`.
 pub fn list_playback_streams() -> Vec<PlaybackStream> {
     pactl(&["list", "sink-inputs"])
         .map(|out| parse_sink_inputs(&out))
         .unwrap_or_default()
 }
 
-/// Parses `pactl list sink-inputs` output into playback streams.
 fn parse_sink_inputs(out: &str) -> Vec<PlaybackStream> {
     #[derive(Default)]
     struct Raw {
@@ -138,7 +118,7 @@ fn parse_sink_inputs(out: &str) -> Vec<PlaybackStream> {
         .collect()
 }
 
-/// Active solo capture of one app. Restores everything on drop.
+/// Active solo capture; restores everything on drop, including on panic.
 pub struct SoloSession {
     null_module: u32,
     loop_module: Option<u32>,
@@ -149,8 +129,6 @@ pub struct SoloSession {
 }
 
 impl SoloSession {
-    /// Reroutes `stream` through a private null sink and returns the session.
-    /// After this returns Ok, capture from [`SoloSession::monitor_source`].
     pub fn start(stream: &PlaybackStream) -> Result<Self, String> {
         let null_sink = format!("xviz_cap_{}", std::process::id());
         let null_module: u32 = pactl(&[
@@ -182,8 +160,7 @@ impl SoloSession {
             ));
         }
 
-        // Route the audio back to the speakers so capturing stays inaudible
-        // as a side effect. Best effort: without it the app simply goes mute.
+        // Best effort: without the loopback the app goes mute.
         session.loop_module = pactl(&[
             "load-module",
             "module-loopback",
@@ -197,12 +174,10 @@ impl SoloSession {
         Ok(session)
     }
 
-    /// Monitor source to record while this session is alive.
     pub fn monitor_source(&self) -> String {
         format!("{}.monitor", self.null_sink)
     }
 
-    /// Whether the audibility loopback is active.
     pub fn loopback_active(&self) -> bool {
         self.loop_module.is_some()
     }
@@ -212,7 +187,7 @@ impl SoloSession {
             return;
         }
         self.done = true;
-        // Move the stream back where it was; ignore errors (it may be gone).
+        // The stream may already be gone; ignore errors here.
         let _ = pactl(&[
             "move-sink-input",
             &self.input.to_string(),
@@ -274,7 +249,6 @@ Sink Input #550\n\
         assert_eq!(apps[0].sink, 443);
         assert_eq!(apps[0].app, "WEBRTC VoiceEngine");
         assert_eq!(apps[0].label(), "WEBRTC VoiceEngine - playStream");
-        // No application.name: falls back to the binary.
         assert_eq!(apps[1].app, "firefox");
         assert_eq!(apps[1].label(), "firefox");
     }

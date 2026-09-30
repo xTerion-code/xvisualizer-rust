@@ -1,17 +1,11 @@
-//! Frame rendering: theme menu and spectrum visualizer.
-//!
-//! Everything here only builds text into the reused frame buffer.
-//! It performs no I/O and reads no input.
-//!
-//! Newlines are always `\r\n` because the terminal runs in raw mode,
-//! where a bare `\n` does not return the carriage (staircase effect).
+// Newlines are always `\r\n`: raw mode disables `\n` -> `\r\n` translation,
+// so a bare `\n` would cause the staircase effect.
 
 use std::fmt::Write as _;
 
 use crate::source::{CaptureTarget, PlaybackStream};
 use crate::theme::Theme;
 
-/// Footer height in rows; the bar area is terminal height minus this.
 const FOOTER_HEIGHT: usize = 2;
 
 pub fn truncate_chars(s: &str, max: usize) -> &str {
@@ -22,15 +16,14 @@ pub fn truncate_chars(s: &str, max: usize) -> &str {
     &s[..idx]
 }
 
-/// Row color by height: green -> yellow -> red.
 fn row_color(row: usize, area_h: usize) -> &'static str {
     let ratio = row as f32 / area_h.max(1) as f32;
     if ratio >= 0.85 {
-        "\x1b[31m" // red
+        "\x1b[31m"
     } else if ratio >= 0.6 {
-        "\x1b[33m" // yellow
+        "\x1b[33m"
     } else {
-        "\x1b[32m" // green
+        "\x1b[32m"
     }
 }
 
@@ -38,9 +31,6 @@ fn center_x(cols: usize, width: usize) -> usize {
     cols.saturating_sub(width) / 2
 }
 
-/// Draws the theme selection menu into `frame`.
-///
-/// Controls: arrows select, Enter applies.
 pub fn render_menu(
     frame: &mut String,
     cols: usize,
@@ -51,7 +41,6 @@ pub fn render_menu(
 ) {
     frame.clear();
     let _ = write!(frame, "\x1b[H");
-    // Vertical centering for the content below.
     let lines = 9usize;
     let mut top = rows.saturating_sub(lines) / 2;
     for _ in 0..top {
@@ -84,7 +73,6 @@ pub fn render_menu(
     for (idx, th) in Theme::all().iter().enumerate() {
         let is_sel = idx == selected;
         let is_cur = *th == current;
-        // Preview: classic with gaps, solid joined.
         let preview = match th {
             Theme::Classic => "blocks with gaps",
             Theme::Solid => "joined blocks",
@@ -101,7 +89,7 @@ pub fn render_menu(
         frame.push_str(&" ".repeat(x));
         if is_sel {
             if use_color {
-                frame.push_str("\x1b[7m"); // reverse video
+                frame.push_str("\x1b[7m");
             } else {
                 frame.push_str("> ");
             }
@@ -125,7 +113,7 @@ pub fn render_menu(
         frame.push_str("\x1b[0m");
     }
     frame.push_str("\x1b[K");
-    // Pad to the bottom so no visualizer leftovers remain on screen.
+    // Clear any visualizer leftovers below the menu.
     top += lines;
     while top < rows {
         frame.push_str("\r\n\x1b[K");
@@ -133,10 +121,6 @@ pub fn render_menu(
     }
 }
 
-/// Draws the capture source menu into `frame`.
-///
-/// Row 0 is always the system mix; rows 1.. mirror `apps`.
-/// Controls: arrows select, Enter captures, R refreshes the app list.
 pub fn render_source_menu(
     frame: &mut String,
     cols: usize,
@@ -179,7 +163,6 @@ pub fn render_source_menu(
     lines.push(String::new());
     lines.push("Esc - back  |  Q - quit".to_string());
 
-    // Vertical centering.
     let mut top = rows.saturating_sub(lines.len()) / 2;
     for _ in 0..top {
         frame.push_str("\x1b[K\r\n");
@@ -199,7 +182,7 @@ pub fn render_source_menu(
         } else if is_hint && use_color {
             frame.push_str("\x1b[90m");
         } else if is_option && line.starts_with("> ") && use_color {
-            frame.push_str("\x1b[7m"); // reverse video
+            frame.push_str("\x1b[7m");
         }
         frame.push_str(line);
         if (is_title || is_hint || (is_option && line.starts_with("> "))) && use_color {
@@ -211,7 +194,7 @@ pub fn render_source_menu(
             frame.push_str("\x1b[K");
         }
     }
-    // Pad to the bottom so no visualizer leftovers remain on screen.
+    // Clear any visualizer leftovers below the menu.
     top += lines.len();
     while top < rows {
         frame.push_str("\r\n\x1b[K");
@@ -219,7 +202,6 @@ pub fn render_source_menu(
     }
 }
 
-/// One selectable menu row: `> Name - detail  (current)`.
 fn menu_row(idx: usize, selected: usize, name: &str, detail: &str, is_current: bool) -> String {
     let marker = if idx == selected { "> " } else { "  " };
     let cur = if is_current { "  (current)" } else { "" };
@@ -229,36 +211,23 @@ fn menu_row(idx: usize, selected: usize, name: &str, detail: &str, is_current: b
         format!("{marker}{name} - {detail}{cur}")
     }
 }
-/// Parameters for one visualizer frame.
 pub struct Visualizer<'a> {
-    /// Smoothed bar levels (0..1).
     pub bars: &'a [f32],
-    /// Falling peak levels (0..1).
     pub peaks: &'a [f32],
-    /// Terminal width in cells.
     pub cols: usize,
-    /// Terminal height in cells.
     pub rows: usize,
-    /// Bar width in cells (from the theme).
     pub bar_width: usize,
-    /// Gap between bars in cells (from the theme).
     pub gap_width: usize,
-    /// Whether ANSI colors are enabled.
     pub use_color: bool,
-    /// Audio source label for the footer.
     pub source: &'a str,
-    /// Active theme name for the footer.
     pub theme_name: &'a str,
-    /// Transient status message replacing the footer (errors, switch confirmations).
     pub notice: Option<&'a str>,
 }
 
-/// Draws the spectrum bars into `frame` (fixed height, no clear, no flicker).
 pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
     let n_bars = v.bars.len();
     let area_h = v.rows.saturating_sub(FOOTER_HEIGHT).max(5);
 
-    // Levels (0..1) mapped to rows, with peak rows rounded.
     let bar_h: Vec<f32> = v
         .bars
         .iter()
@@ -273,7 +242,6 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
     let width = n_bars * v.bar_width + n_bars.saturating_sub(1) * v.gap_width;
     let pad_x = v.cols.saturating_sub(width) / 2;
     frame.clear();
-    // Top row of the area; position the cursor once.
     let _ = write!(frame, "\x1b[H");
     let pad: String = " ".repeat(pad_x);
     for row in (0..area_h).rev() {
@@ -282,12 +250,10 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
             frame.push_str(row_color(row, area_h));
         }
         for i in 0..n_bars {
-            // Fractional height: the integer part is full blocks,
-            // the fraction is 1/8-blocks for sub-cell smoothness.
+            // Integer part is full blocks, the fraction is 1/8-blocks.
             let fh = bar_h[i];
             let full = fh.floor() as usize;
             let frac = fh - full as f32;
-            // Is there a peak marker exactly one cell above?
             let has_peak = cap_rows[i] == row + 1 && cap_rows[i] <= area_h && row >= full;
             if row < full {
                 for _ in 0..v.bar_width {
@@ -295,11 +261,9 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
                 }
             } else if row == full {
                 let idx = ((frac * 8.0).round() as usize).min(8);
-                // 1/8-blocks, bottom to top.
                 const PARTS: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
                 let ch = PARTS[idx];
                 if ch == ' ' {
-                    // Empty - may hold a peak marker.
                     if has_peak {
                         push_peak(frame, v.bar_width, v.use_color);
                         if v.use_color {
@@ -316,10 +280,9 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
                     }
                 }
             } else if has_peak {
-                // Peak marker exactly one cell above/at the top.
                 push_peak(frame, v.bar_width, v.use_color);
                 if v.use_color {
-                    // Restore the row color for the following cells.
+                    // Peak uses its own color; restore the row color after it.
                     frame.push_str(row_color(row, area_h));
                 }
             } else {
@@ -340,11 +303,9 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
         if v.use_color {
             frame.push_str("\x1b[0m");
         }
-        // Erase leftovers of a previously longer line when shrinking.
+        // Clear leftovers when shrinking to a narrower frame.
         frame.push_str("\x1b[K\r\n");
     }
-    // Footer: exactly FOOTER_HEIGHT lines for a fixed geometry.
-    // A transient notice (errors, confirmations) replaces the footer.
     let foot = match v.notice {
         Some(msg) => truncate_chars(msg, 60).to_string(),
         None => {
@@ -363,7 +324,6 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
     frame.push_str("\x1b[K");
 }
 
-/// Pushes a cyan peak marker `bar_width` cells wide.
 fn push_peak(frame: &mut String, bar_width: usize, use_color: bool) {
     if use_color {
         frame.push_str("\x1b[0m\x1b[36m");

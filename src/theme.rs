@@ -1,9 +1,3 @@
-//! Bar-style themes.
-//!
-//! This module only defines the available themes and their geometry.
-//! It knows nothing about audio, input or rendering.
-
-/// Bar style theme.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Theme {
     Classic,
@@ -11,12 +5,10 @@ pub enum Theme {
 }
 
 impl Theme {
-    /// All themes in menu order.
     pub fn all() -> [Theme; 2] {
         [Theme::Classic, Theme::Solid]
     }
 
-    /// Index of this theme in [`Theme::all`].
     pub fn index(self) -> usize {
         match self {
             Theme::Classic => 0,
@@ -24,7 +16,6 @@ impl Theme {
         }
     }
 
-    /// Short display name.
     pub fn name(self) -> &'static str {
         match self {
             Theme::Classic => "Classic",
@@ -32,7 +23,6 @@ impl Theme {
         }
     }
 
-    /// One-line description shown in the theme menu.
     pub fn desc(self) -> &'static str {
         match self {
             Theme::Classic => "thin bars with gaps",
@@ -40,7 +30,6 @@ impl Theme {
         }
     }
 
-    /// (bar width, gap between bars) in terminal cells.
     pub fn dims(self) -> (usize, usize) {
         match self {
             Theme::Classic => (1, 1),
@@ -48,7 +37,6 @@ impl Theme {
         }
     }
 
-    /// Parses a `--theme` CLI value.
     pub fn from_str(s: &str) -> Option<Theme> {
         match s.to_lowercase().as_str() {
             "classic" | "1" => Some(Theme::Classic),
@@ -57,12 +45,11 @@ impl Theme {
         }
     }
 
-    /// How many bars fit into `cols` columns for this theme,
-    /// clamped to `max` and guarded against very narrow windows.
     pub fn fit_bar_count(self, cols: usize, max: usize) -> usize {
         let (bar_w, gap_w) = self.dims();
         let cell = (bar_w + gap_w).max(1);
         let mut n = ((cols.saturating_sub(4) + gap_w) / cell).clamp(8, max);
+        // Shrink until the bars actually fit; guards very narrow windows.
         while n > 8 && (n * bar_w + n.saturating_sub(1) * gap_w) > cols {
             n -= 1;
         }

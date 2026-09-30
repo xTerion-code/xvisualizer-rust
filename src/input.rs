@@ -1,8 +1,3 @@
-//! Keyboard input: theme menu navigation and global hotkeys.
-//!
-//! This module only translates key events into UI state changes.
-//! It knows nothing about audio, FFT or rendering.
-
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -11,40 +6,29 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use crate::source::{CaptureTarget, PlaybackStream, list_playback_streams};
 use crate::theme::Theme;
 
-/// UI state: which screen is shown and which theme is active/selected.
 pub struct UiState {
-    /// Theme currently applied to the visualizer.
     pub current: Theme,
-    /// Theme highlighted in the theme menu.
     pub selected: usize,
-    /// Whether the theme menu is shown instead of the visualizer.
     pub in_menu: bool,
-    /// What is currently captured (system mix or one app).
     pub target: CaptureTarget,
-    /// Playback streams listed in the source menu (refreshed on open).
     pub apps: Vec<PlaybackStream>,
-    /// Row highlighted in the source menu (0 = system, 1.. = apps).
     pub source_selected: usize,
-    /// Whether the source menu is shown instead of the visualizer.
     pub in_source_menu: bool,
 }
 
-/// Side-effect-free request from the key handler to the main loop.
-/// Source switching touches PulseAudio and restarts capture, so `main`
-/// applies these events after polling.
+// Source switching reroutes PulseAudio and restarts capture, so the handler
+// only returns a request and `main` applies it.
 pub enum UiEvent {
-    /// Capture the whole system mix again.
     SelectSystem,
-    /// Solo-capture one app's playback stream.
     SelectStream(PlaybackStream),
 }
 
 impl UiState {
-    /// Initial state: the app starts with the theme menu open.
     pub fn new(initial: Theme) -> Self {
         Self {
             current: initial,
             selected: initial.index(),
+            // App starts with the theme menu open.
             in_menu: true,
             target: CaptureTarget::System,
             apps: Vec::new(),
@@ -53,20 +37,17 @@ impl UiState {
         }
     }
 
-    /// Opens the menu, highlighting the active theme.
     fn open_menu(&mut self) {
         self.selected = self.current.index();
         self.in_source_menu = false;
         self.in_menu = true;
     }
 
-    /// Moves the menu highlight (`dir`: +1 down/right, -1 up/left, wraps around).
     fn step(&mut self, dir: i32) {
         let n = Theme::all().len() as i32;
         self.selected = (self.selected as i32 + dir).rem_euclid(n) as usize;
     }
 
-    /// Opens the source menu, refreshing the app list first.
     fn open_source_menu(&mut self) {
         self.apps = list_playback_streams();
         self.source_selected = self.target.menu_index(&self.apps);
@@ -74,26 +55,22 @@ impl UiState {
         self.in_source_menu = true;
     }
 
-    /// Moves the source highlight, clamped to the available rows.
     fn source_step(&mut self, dir: i32) {
         let n = self.apps.len() as i32 + 1;
         self.source_selected = (self.source_selected as i32 + dir).rem_euclid(n) as usize;
     }
 
-    /// Re-reads the app list while the source menu stays open.
     fn refresh_apps(&mut self) {
         self.apps = list_playback_streams();
         let max = self.apps.len();
         self.source_selected = self.source_selected.min(max);
     }
 
-    /// Applies the highlighted theme and returns to the visualizer.
     fn confirm(&mut self) {
         self.current = Theme::all()[self.selected];
         self.in_menu = false;
     }
 
-    /// Returns to the visualizer without changing the theme.
     fn cancel(&mut self) {
         self.selected = self.current.index();
         self.in_menu = false;
@@ -106,8 +83,6 @@ enum Action {
     Emit(UiEvent),
 }
 
-/// Arrows + Enter system for the source menu. Confirming emits
-/// a switch request that `main` applies (PulseAudio rerouting).
 fn handle_source_key(state: &mut UiState, key: KeyEvent) -> Action {
     match key.code {
         KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('w') => state.source_step(-1),
@@ -132,7 +107,6 @@ fn handle_source_key(state: &mut UiState, key: KeyEvent) -> Action {
             }
         }
         KeyCode::Esc => {
-            // Back without changing the source.
             state.source_selected = state.target.menu_index(&state.apps);
             state.in_source_menu = false;
         }
@@ -141,11 +115,9 @@ fn handle_source_key(state: &mut UiState, key: KeyEvent) -> Action {
     Action::Nothing
 }
 
-/// Drains all pending key events without blocking the frame loop.
+/// Drains pending keys without blocking the frame loop.
 ///
-/// In raw mode Ctrl+C arrives as a key event rather than SIGINT,
-/// so quitting is handled here by clearing `running`.
-/// Source-switch requests are returned for `main` to apply.
+/// In raw mode Ctrl+C arrives as a key event, not SIGINT.
 pub fn poll_keys(state: &mut UiState, running: &AtomicBool) -> Vec<UiEvent> {
     let mut events = Vec::new();
     while event::poll(Duration::from_millis(0)).unwrap_or(false) {
@@ -187,7 +159,6 @@ fn handle_key(state: &mut UiState, key: KeyEvent) -> Action {
     }
 }
 
-/// Arrows + Enter system for the theme menu.
 fn handle_menu_key(state: &mut UiState, key: KeyEvent) -> Action {
     match key.code {
         KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('w') => state.step(-1),
@@ -205,17 +176,14 @@ fn handle_menu_key(state: &mut UiState, key: KeyEvent) -> Action {
 
 fn handle_visualizer_key(state: &mut UiState, key: KeyEvent) -> Action {
     match key.code {
-        // Open the theme menu.
         KeyCode::Char('t')
         | KeyCode::Char('T')
         | KeyCode::Char('m')
         | KeyCode::Char('M')
         | KeyCode::Tab
         | KeyCode::F(2) => state.open_menu(),
-        // Open the source menu (system mix vs. one app).
         KeyCode::Char('s') | KeyCode::Char('S') => state.open_source_menu(),
-        // Arrows also open the menu, so arrow selection is reachable
-        // straight from the visualizer. The pressed arrow already moves
+        // Arrows open the menu too; the pressed arrow already moves
         // the highlight so the key feels responsive.
         KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right => {
             state.open_menu();
@@ -224,7 +192,6 @@ fn handle_visualizer_key(state: &mut UiState, key: KeyEvent) -> Action {
                 _ => state.step(-1),
             }
         }
-        // Quick theme switch without the menu.
         KeyCode::Char('1') => state.current = Theme::Classic,
         KeyCode::Char('2') => state.current = Theme::Solid,
         _ => {}

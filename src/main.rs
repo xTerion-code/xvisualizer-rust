@@ -1,10 +1,3 @@
-//! xvisualizer - ASCII visualizer for system audio.
-//!
-//! Entry point and frame-loop orchestration. All real work lives in modules:
-//! `args` (CLI), `audio` (capture), `dsp` (spectrum), `input` (keyboard),
-//! `render` (frames), `source` (capture source selection),
-//! `terminal` (terminal mode), `theme` (bar styles).
-
 mod args;
 mod audio;
 mod dsp;
@@ -23,13 +16,10 @@ use std::time::{Duration, Instant};
 use crate::input::UiEvent;
 use crate::source::{CaptureTarget, SoloSession};
 
-/// How long a footer notice (errors, confirmations) stays visible.
 const NOTICE_TIME: Duration = Duration::from_secs(4);
 
 fn main() -> std::io::Result<()> {
     let parsed = args::parse_args();
-    // Fixed high refresh rate for maximally smooth animation,
-    // no user-facing FPS setting.
     const FRAME_TIME: Duration = Duration::from_nanos(1_000_000_000 / 120);
     let running = Arc::new(AtomicBool::new(true));
     let stop = running.clone();
@@ -40,14 +30,13 @@ fn main() -> std::io::Result<()> {
     let system_monitor = parsed.device.clone().or_else(audio::detect_monitor);
     let mut capture = audio::CaptureSession::start(system_monitor.clone(), running.clone());
 
-    // Wait for the first data (silence - zeros - counts as data too).
     thread::sleep(Duration::from_millis(120));
 
     let mut analyzer = dsp::Analyzer::new();
     let mut ui = input::UiState::new(parsed.theme.unwrap_or(theme::Theme::Classic));
 
-    // Active solo capture of one app (None = system mix).
-    // Dropping it moves the app's stream back and unloads the modules.
+    // None = system mix; dropping the session moves the stream back
+    // and unloads the helper modules.
     let mut solo: Option<SoloSession> = None;
     let mut notice: Option<(String, Instant)> = None;
 
@@ -55,7 +44,7 @@ fn main() -> std::io::Result<()> {
     terminal::enter(&mut stdout)?;
     let _guard = terminal::TerminalGuard;
 
-    // Reused frame buffer: a single write + flush per frame.
+    // Single write + flush per frame to avoid flicker.
     let mut frame = String::with_capacity(80 * 30);
     let mut prev = Instant::now();
 
@@ -63,7 +52,6 @@ fn main() -> std::io::Result<()> {
         for event in input::poll_keys(&mut ui, &running) {
             match event {
                 UiEvent::SelectSystem => {
-                    // Dropping the guard restores the app's stream first.
                     drop(solo.take());
                     capture.switch(system_monitor.clone(), &running);
                     ui.target = CaptureTarget::System;
@@ -104,7 +92,7 @@ fn main() -> std::io::Result<()> {
             break;
         }
         let frame_start = Instant::now();
-        // dt for smooth decay (clamped against resize/lag spikes).
+        // Clamp dt against resize/lag spikes so smoothing stays stable.
         let dt = frame_start
             .duration_since(prev)
             .as_secs_f32()
@@ -118,7 +106,6 @@ fn main() -> std::io::Result<()> {
         }
 
         let use_color = !parsed.no_color;
-        // Expire the transient footer notice.
         let active_notice = match &notice {
             Some((msg, at)) if at.elapsed() < NOTICE_TIME => Some(msg.as_str()),
             _ => {
@@ -162,15 +149,12 @@ fn main() -> std::io::Result<()> {
         stdout.write_all(frame.as_bytes())?;
         stdout.flush()?;
 
-        // Fixed high refresh: sleep the remainder up to ~120 Hz.
         let elapsed = frame_start.elapsed();
         if elapsed < FRAME_TIME {
             thread::sleep(FRAME_TIME - elapsed);
         }
     }
 
-    // Drop the solo guard explicitly so the app's stream is moved back
-    // and the helper modules are unloaded before the terminal is restored.
     drop(solo);
 
     Ok(())
