@@ -30,26 +30,36 @@ pub fn print_help() {
 }
 
 pub fn parse_args() -> Args {
+    parse_from(std::env::args().skip(1))
+}
+
+fn parse_from(it: impl Iterator<Item = String>) -> Args {
     let mut device: Option<String> = None;
-    let mut no_color = false;
+    // Honor https://no-color.org/ in addition to the flag.
+    let mut no_color = std::env::var_os("NO_COLOR").is_some();
     let mut theme: Option<Theme> = None;
-    let mut it = std::env::args().skip(1);
+    let mut it = it.peekable();
     while let Some(a) = it.next() {
-        match a.as_str() {
+        // Support both `--flag value` and `--flag=value`.
+        let (flag, inline) = match a.split_once('=') {
+            Some((f, v)) if f.starts_with("--") => (f.to_string(), Some(v.to_string())),
+            _ => (a.clone(), None),
+        };
+        match flag.as_str() {
             "-h" | "--help" => {
                 print_help();
                 std::process::exit(0);
             }
             "-d" | "--device" => {
-                let v = it.next().unwrap_or_else(|| {
-                    eprintln!("error: {a} requires a device name");
+                let v = inline.or_else(|| it.next()).unwrap_or_else(|| {
+                    eprintln!("error: {flag} requires a device name");
                     std::process::exit(2);
                 });
                 device = Some(v);
             }
             "-t" | "--theme" => {
-                let v = it.next().unwrap_or_else(|| {
-                    eprintln!("error: {a} requires classic|solid");
+                let v = inline.or_else(|| it.next()).unwrap_or_else(|| {
+                    eprintln!("error: {flag} requires classic|solid");
                     std::process::exit(2);
                 });
                 match Theme::from_str(&v) {

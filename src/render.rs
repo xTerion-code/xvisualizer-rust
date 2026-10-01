@@ -224,28 +224,35 @@ pub struct Visualizer<'a> {
     pub notice: Option<&'a str>,
 }
 
+const PARTS: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+
 pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
-    let n_bars = v.bars.len();
+    let n_bars = v.bars.len().min(crate::dsp::MAX_BARS);
     let area_h = v.rows.saturating_sub(FOOTER_HEIGHT).max(5);
 
-    let bar_h: Vec<f32> = v
-        .bars
-        .iter()
-        .map(|b| (b * area_h as f32).clamp(0.0, area_h as f32))
-        .collect();
-    let cap_rows: Vec<usize> = v
-        .peaks
-        .iter()
-        .map(|c| ((c * area_h as f32).round() as usize).min(area_h))
-        .collect();
+    // Stack buffers: no per-frame heap allocation for heights.
+    let mut bar_h = [0.0f32; crate::dsp::MAX_BARS];
+    let mut cap_rows = [0usize; crate::dsp::MAX_BARS];
+    for (i, b) in v.bars.iter().take(n_bars).enumerate() {
+        bar_h[i] = (b * area_h as f32).clamp(0.0, area_h as f32);
+    }
+    for (i, c) in v.peaks.iter().take(n_bars).enumerate() {
+        cap_rows[i] = ((c * area_h as f32).round() as usize).min(area_h);
+    }
 
     let width = n_bars * v.bar_width + n_bars.saturating_sub(1) * v.gap_width;
     let pad_x = v.cols.saturating_sub(width) / 2;
     frame.clear();
     let _ = write!(frame, "\x1b[H");
-    let pad: String = " ".repeat(pad_x);
+    let gap_str: String = if v.gap_width > 0 {
+        " ".repeat(v.gap_width)
+    } else {
+        String::new()
+    };
     for row in (0..area_h).rev() {
-        frame.push_str(&pad);
+        for _ in 0..pad_x {
+            frame.push(' ');
+        }
         if v.use_color {
             frame.push_str(row_color(row, area_h));
         }
@@ -261,7 +268,6 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
                 }
             } else if row == full {
                 let idx = ((frac * 8.0).round() as usize).min(8);
-                const PARTS: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
                 let ch = PARTS[idx];
                 if ch == ' ' {
                     if has_peak {
@@ -293,10 +299,10 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
             if v.gap_width > 0 && i + 1 < n_bars {
                 if v.use_color {
                     frame.push_str("\x1b[0m");
-                    frame.push_str(&" ".repeat(v.gap_width));
+                    frame.push_str(&gap_str);
                     frame.push_str(row_color(row, area_h));
                 } else {
-                    frame.push_str(&" ".repeat(v.gap_width));
+                    frame.push_str(&gap_str);
                 }
             }
         }

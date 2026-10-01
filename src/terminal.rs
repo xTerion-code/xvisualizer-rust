@@ -6,18 +6,29 @@ pub struct TerminalGuard;
 
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
-        let mut out = io::stdout();
-        let _ = terminal::disable_raw_mode();
-        let _ = execute!(out, cursor::Show);
-        let _ = execute!(out, terminal::LeaveAlternateScreen);
+        restore();
     }
 }
 
-pub fn enter(out: &mut impl Write) -> io::Result<()> {
-    execute!(out, terminal::EnterAlternateScreen)?;
-    terminal::enable_raw_mode()?;
-    execute!(out, cursor::Hide)?;
-    Ok(())
+/// Best-effort restore, also used by the panic hook in `main`.
+pub fn restore() {
+    let mut out = io::stdout();
+    let _ = terminal::disable_raw_mode();
+    let _ = execute!(out, cursor::Show);
+    let _ = execute!(out, terminal::LeaveAlternateScreen);
+}
+
+pub fn enter(out: &mut impl Write) -> io::Result<TerminalGuard> {
+    execute!(&mut *out, terminal::EnterAlternateScreen)?;
+    if let Err(e) = terminal::enable_raw_mode() {
+        let _ = execute!(&mut *out, terminal::LeaveAlternateScreen);
+        return Err(e);
+    }
+    if let Err(e) = execute!(&mut *out, cursor::Hide) {
+        restore();
+        return Err(e);
+    }
+    Ok(TerminalGuard)
 }
 
 // Raw mode also disables `\n` -> `\r\n` translation (see render.rs).

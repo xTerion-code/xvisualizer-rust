@@ -48,9 +48,9 @@ impl Theme {
     pub fn fit_bar_count(self, cols: usize, max: usize) -> usize {
         let (bar_w, gap_w) = self.dims();
         let cell = (bar_w + gap_w).max(1);
-        let mut n = ((cols.saturating_sub(4) + gap_w) / cell).clamp(8, max);
+        let mut n = ((cols.saturating_sub(4) + gap_w) / cell).clamp(1, max);
         // Shrink until the bars actually fit; guards very narrow windows.
-        while n > 8 && (n * bar_w + n.saturating_sub(1) * gap_w) > cols {
+        while n > 1 && (n * bar_w + n.saturating_sub(1) * gap_w) > cols {
             n -= 1;
         }
         n

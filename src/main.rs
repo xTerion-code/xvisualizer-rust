@@ -41,8 +41,13 @@ fn main() -> std::io::Result<()> {
     let mut notice: Option<(String, Instant)> = None;
 
     let mut stdout = std::io::stdout();
-    terminal::enter(&mut stdout)?;
-    let _guard = terminal::TerminalGuard;
+    let _guard = terminal::enter(&mut stdout)?;
+    // Panics would otherwise leave raw mode / alternate screen on.
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        terminal::restore();
+        default_hook(info);
+    }));
 
     // Single write + flush per frame to avoid flicker.
     let mut frame = String::with_capacity(80 * 30);
@@ -100,6 +105,11 @@ fn main() -> std::io::Result<()> {
         prev = frame_start;
 
         let (cols, rows) = terminal::size();
+        // Keep capacity ahead of very wide terminals to avoid reallocs.
+        let want = cols.saturating_mul(rows).saturating_mul(8).max(80 * 30);
+        if frame.capacity() < want {
+            frame.reserve(want - frame.capacity());
+        }
         let bar_count = ui.current.fit_bar_count(cols, dsp::MAX_BARS);
         if !analyzer.update(capture.queue(), bar_count, dt) {
             break;

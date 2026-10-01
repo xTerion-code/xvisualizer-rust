@@ -78,10 +78,7 @@ impl CaptureSession {
 
     /// Stops the worker, drops stale audio, and captures `monitor` instead.
     pub fn switch(&mut self, monitor: Option<String>, running: &Arc<AtomicBool>) {
-        self.stop.store(true, Ordering::SeqCst);
-        if let Some(h) = self.handle.take() {
-            let _ = h.join();
-        }
+        self.stop_worker();
         if let Ok(mut q) = self.queue.lock() {
             q.clear();
         }
@@ -93,6 +90,19 @@ impl CaptureSession {
             running.clone(),
             stop,
         ));
+    }
+
+    fn stop_worker(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        if let Some(h) = self.handle.take() {
+            let _ = h.join();
+        }
+    }
+}
+
+impl Drop for CaptureSession {
+    fn drop(&mut self) {
+        self.stop_worker();
     }
 }
 
@@ -147,11 +157,21 @@ fn capture_loop(
 
     let mut raw = vec![0u8; READ_FRAMES * 4];
     let mut mono = vec![0.0f32; READ_FRAMES];
+    let mut failures = 0u32;
     while running.load(Ordering::SeqCst) && !stop.load(Ordering::SeqCst) {
         if simple.read(&mut raw).is_err() {
+            failures += 1;
+            // Persistent read errors mean the device is gone; shut down
+            // instead of spinning silently (fatal-by-design, see AGENTS.md).
+            if failures > 20 {
+                eprintln!("pulse record error: device read failed repeatedly");
+                running.store(false, Ordering::SeqCst);
+                return;
+            }
             thread::sleep(Duration::from_millis(50));
             continue;
         }
+        failures = 0;
         // Decode outside the lock, then take one short lock to publish.
         for (i, frame) in raw.as_chunks::<4>().0.iter().enumerate() {
             let l = i16::from_le_bytes([frame[0], frame[1]]) as f32;

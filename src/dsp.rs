@@ -31,7 +31,9 @@ impl Analyzer {
         let fft = planner.plan_fft_forward(WINDOW);
 
         let hann: Vec<f32> = (0..WINDOW)
-            .map(|n| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * n as f32 / WINDOW as f32).cos()))
+            .map(|n| {
+                0.5 * (1.0 - (2.0 * std::f32::consts::PI * n as f32 / (WINDOW - 1) as f32).cos())
+            })
             .collect();
 
         let bin_hz = RATE as f32 / WINDOW as f32;

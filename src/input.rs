@@ -140,7 +140,7 @@ pub fn poll_keys(state: &mut UiState, running: &AtomicBool) -> Vec<UiEvent> {
 }
 
 fn is_quit(key: KeyEvent) -> bool {
-    key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('c'))
+    (key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('c')))
         || matches!(key.code, KeyCode::Char('q') | KeyCode::Char('Q'))
 }
 
@@ -165,8 +165,12 @@ fn handle_menu_key(state: &mut UiState, key: KeyEvent) -> Action {
         KeyCode::Left | KeyCode::Char('h') => state.step(-1),
         KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => state.step(1),
         KeyCode::Right | KeyCode::Char('l') => state.step(1),
-        KeyCode::Char('1') => state.selected = 0,
-        KeyCode::Char('2') => state.selected = 1,
+        KeyCode::Char(c) if ('1'..='9').contains(&c) => {
+            let idx = (c as usize) - ('1' as usize);
+            if idx < Theme::all().len() {
+                state.selected = idx;
+            }
+        }
         KeyCode::Enter | KeyCode::Char(' ') => state.confirm(),
         KeyCode::Esc => state.cancel(),
         _ => {}
@@ -192,8 +196,12 @@ fn handle_visualizer_key(state: &mut UiState, key: KeyEvent) -> Action {
                 _ => state.step(-1),
             }
         }
-        KeyCode::Char('1') => state.current = Theme::Classic,
-        KeyCode::Char('2') => state.current = Theme::Solid,
+        KeyCode::Char(c) if ('1'..='9').contains(&c) => {
+            let idx = (c as usize) - ('1' as usize);
+            if idx < Theme::all().len() {
+                state.current = Theme::all()[idx];
+            }
+        }
         _ => {}
     }
     Action::Nothing

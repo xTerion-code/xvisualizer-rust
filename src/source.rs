@@ -69,7 +69,9 @@ fn parse_sink_inputs(out: &str) -> Vec<PlaybackStream> {
     let mut in_props = false;
 
     for line in out.lines() {
-        if let Some(rest) = line.strip_prefix("Sink Input #") {
+        // `pactl` indents with tabs or spaces depending on version.
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix("Sink Input #") {
             if let Some(prev) = cur.take() {
                 raws.push(prev);
             }
@@ -79,7 +81,6 @@ fn parse_sink_inputs(out: &str) -> Vec<PlaybackStream> {
             });
             in_props = false;
         } else if let Some(r) = cur.as_mut() {
-            let t = line.trim_start_matches('\t');
             if t == "Properties:" {
                 in_props = true;
             } else if in_props {
@@ -130,7 +131,12 @@ pub struct SoloSession {
 
 impl SoloSession {
     pub fn start(stream: &PlaybackStream) -> Result<Self, String> {
-        let null_sink = format!("xviz_cap_{}", std::process::id());
+        // pid + time makes the sink unique across parallel app instances.
+        let uniq = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
+        let null_sink = format!("xviz_cap_{}_{}", std::process::id(), uniq);
         let null_module: u32 = pactl(&[
             "load-module",
             "module-null-sink",
@@ -256,5 +262,29 @@ Sink Input #550\n\
     #[test]
     fn empty_output_gives_no_streams() {
         assert!(parse_sink_inputs("").is_empty());
+    }
+
+    #[test]
+    fn parses_space_indented_output() {
+        let sample = "Sink Input #7\n\
+         Driver: PipeWire\n\
+         Sink: 1\n\
+         Properties:\n\
+                 application.name = \"player\"\n\
+                 media.name = \"music = loud\"\n";
+        let apps = parse_sink_inputs(sample);
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].input, 7);
+        assert_eq!(apps[0].sink, 1);
+        assert_eq!(apps[0].label(), "player - music = loud");
+    }
+
+    #[test]
+    fn skips_entries_without_sink_or_input() {
+        let sample = "Sink Input #x\n\
+\tSink: 1\n\
+\tProperties:\n\
+\t\tapplication.name = \"broken\"\n";
+        assert!(parse_sink_inputs(sample).is_empty());
     }
 }
