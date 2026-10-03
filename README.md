@@ -113,21 +113,27 @@ src/
   args.rs      — CLI parsing (device, theme, color flags)
   audio.rs     — PulseAudio monitor capture into a sample queue
   dsp.rs       — Hann window, FFT, log bands, adaptive gain, smoothing
+  color.rs     — bar color modes (Height / Frequency / Mono)
   theme.rs     — bar-style themes (geometry and names)
-  input.rs     — keyboard: theme menu navigation (arrows + Enter), hotkeys
-  render.rs    — frame building: theme menu and spectrum visualizer
-  source.rs    — capture source selection: app list, solo null-sink sessions
+  ui.rs        — UI state (theme, source, pause, color, help)
+  input.rs     — keyboard decoding: menu / source / visualizer / help keys
+  menu.rs      — theme menu and capture-source menu screens
+  visualizer.rs — spectrum frame building and footer status
+  help.rs      — help overlay screen
+  frame.rs     — shared frame-buffer text helpers
+  source.rs    — capture source selection: app list via pactl
+  solo.rs      — solo null-sink session, stream rerouting via loopback
   terminal.rs  — alternate screen / raw mode setup and restore
 ```
 
 Extension points:
 
 - different source / latency — `audio.rs`: `CaptureSession::switch()`, `BufferAttr`, `READ_FRAMES`
-- solo app capture — `source.rs`: `SoloSession`, stream rerouting via null sink + loopback
+- solo app capture — `solo.rs`: `SoloSession`, stream rerouting via null sink + loopback
 - different spectrum — `dsp.rs`: `WINDOW`, Hann table, `F_MIN`/`F_MAX`, `GAMMA`
 - different motion — `dsp.rs`: attack/release taus, gain release, peak fall
-- different look — `theme.rs` (`dims`, new themes) and `render.rs` (`PARTS`, color thresholds, footer)
-- different keys — `input.rs`: `handle_menu_key()`, `handle_visualizer_key()`
+- different look — `theme.rs` (`dims`, new themes), `color.rs` (`ColorMode`, `bar_color`) and `visualizer.rs` (`PARTS`, footer)
+- different keys — `input.rs`: `handle_menu_key()`, `handle_visualizer_key()`; state in `ui.rs`
 
 ## Development
 

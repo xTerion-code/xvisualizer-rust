@@ -1,11 +1,17 @@
 mod args;
 mod audio;
+mod color;
 mod dsp;
+mod frame;
+mod help;
 mod input;
-mod render;
+mod menu;
+mod solo;
 mod source;
 mod terminal;
 mod theme;
+mod ui;
+mod visualizer;
 
 use std::io::Write;
 use std::sync::Arc;
@@ -13,8 +19,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::input::UiEvent;
-use crate::source::{CaptureTarget, SoloSession};
+use crate::solo::SoloSession;
+use crate::source::CaptureTarget;
+use crate::ui::{UiEvent, UiState};
 
 const NOTICE_TIME: Duration = Duration::from_secs(4);
 
@@ -33,7 +40,7 @@ fn main() -> std::io::Result<()> {
     thread::sleep(Duration::from_millis(120));
 
     let mut analyzer = dsp::Analyzer::new();
-    let mut ui = input::UiState::new(parsed.theme.unwrap_or(theme::Theme::Classic));
+    let mut ui = UiState::new(parsed.theme.unwrap_or(theme::Theme::Classic));
 
     // None = system mix; dropping the session moves the stream back
     // and unloads the helper modules.
@@ -154,7 +161,7 @@ fn main() -> std::io::Result<()> {
             }
         };
         if ui.in_source_menu {
-            render::render_source_menu(
+            menu::render_source_menu(
                 &mut frame,
                 cols,
                 rows,
@@ -164,16 +171,16 @@ fn main() -> std::io::Result<()> {
                 use_color,
             );
         } else if ui.in_menu {
-            render::render_menu(&mut frame, cols, rows, ui.selected, ui.current, use_color);
+            menu::render_menu(&mut frame, cols, rows, ui.selected, ui.current, use_color);
         } else if ui.in_help {
-            render::render_help(&mut frame, cols, rows, use_color);
+            help::render_help(&mut frame, cols, rows, use_color);
         } else {
             let (bar_width, gap_width) = ui.current.dims();
             let system_label = system_monitor.as_deref().unwrap_or("mic/default");
             let source_label = ui.target.label(system_label);
-            render::render_visualizer(
+            visualizer::render_visualizer(
                 &mut frame,
-                &render::Visualizer {
+                &visualizer::Visualizer {
                     bars: analyzer.bars(),
                     peaks: analyzer.peaks(),
                     cols,
