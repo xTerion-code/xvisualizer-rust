@@ -11,6 +11,12 @@ const F_MIN: f32 = 30.0;
 const F_MAX: f32 = 16_000.0;
 // Gamma on normalized magnitudes so quiet bands stay visible.
 const GAMMA: f32 = 0.6;
+// Reference magnitude when auto-gain is off. Typical full-scale music peaks
+// around 0.01-0.1 here (FFT magnitude / WINDOW), so gain compensates.
+const FIXED_PEAK: f32 = 0.03;
+const GAIN_MIN: f32 = 0.2;
+const GAIN_MAX: f32 = 8.0;
+const GAIN_STEP: f32 = 1.25;
 
 pub struct Analyzer {
     fft: std::sync::Arc<dyn Fft<f32>>,
@@ -23,6 +29,8 @@ pub struct Analyzer {
     caps: Vec<f32>,
     peak: f32,
     count: usize,
+    gain: f32,
+    auto_gain: bool,
 }
 
 impl Analyzer {
@@ -54,7 +62,33 @@ impl Analyzer {
             caps: vec![0.0f32; MAX_BARS],
             peak: 1e-3,
             count: 0,
+            gain: 1.0,
+            auto_gain: true,
         }
+    }
+
+    pub fn gain(&self) -> f32 {
+        self.gain
+    }
+
+    pub fn auto_gain(&self) -> bool {
+        self.auto_gain
+    }
+
+    pub fn adjust_gain(&mut self, up: bool) {
+        if up {
+            self.gain = (self.gain * GAIN_STEP).min(GAIN_MAX);
+        } else {
+            self.gain = (self.gain / GAIN_STEP).max(GAIN_MIN);
+        }
+    }
+
+    pub fn reset_gain(&mut self) {
+        self.gain = 1.0;
+    }
+
+    pub fn toggle_auto_gain(&mut self) {
+        self.auto_gain = !self.auto_gain;
     }
 
     /// Returns false when the sample queue is gone and the app should stop.
@@ -101,7 +135,16 @@ impl Analyzer {
                 frame_max = v;
             }
         }
-        self.peak = frame_max.max(self.peak * peak_keep).max(1e-4);
+        self.peak = if self.auto_gain {
+            frame_max.max(self.peak * peak_keep).max(1e-4)
+        } else {
+            self.peak
+        };
+        let reference = if self.auto_gain {
+            self.peak
+        } else {
+            FIXED_PEAK
+        };
 
         for i in 0..n_bars {
             let lo = self.edges[i * MAX_BARS / n_bars].min(WINDOW / 2 - 1);
@@ -109,7 +152,7 @@ impl Analyzer {
                 .max(lo + 1)
                 .min(WINDOW / 2);
             let m = self.mags[lo..hi].iter().copied().fold(0.0f32, f32::max);
-            let norm = (m / self.peak).clamp(0.0, 1.0);
+            let norm = (m / reference * self.gain).clamp(0.0, 1.0);
             let target = norm.powf(GAMMA);
             let b = self.bars[i];
             if target > b {

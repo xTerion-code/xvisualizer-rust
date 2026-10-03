@@ -13,10 +13,13 @@ Terminal ASCII visualizer for system audio: low-latency PulseAudio monitor captu
 - 2048-point FFT with Hann window, logarithmic band grid 30 Hz – 16 kHz
 - Fixed ~120 Hz render loop, inertial bar smoothing (fast attack, soft release)
 - Sub-cell bar tops (`▁▂▃▄▅▆▇█`) plus falling peak markers (`─`)
-- Row colors by height: green → yellow → red, `--no-color` to disable
+- Bar colors (`C` to cycle): by height green → yellow → red, by frequency
+  red → yellow → green → cyan → magenta, or uniform mono; `--no-color` to disable
 - Two bar themes with an in-program menu (arrows + Enter):
   `Classic` (thin bars with gaps) and `Solid` (wide bars without gaps).
   Press `T`/`Tab` or any arrow to open the menu, `1`/`2` for a quick switch
+- Pause (`Space`/`P`), sensitivity (`+`/`-`, `G` reset), auto-gain toggle (`A`),
+  help overlay (`H`/`?`/`F1`)
 - Bar count adapts to terminal width (8–64), flicker-free single-write frames
 - Alternate screen: the terminal is restored on exit
 - `Ctrl+C` exit with cursor and screen restored
@@ -55,6 +58,11 @@ T / Tab                open theme menu, Esc - back
 S                      capture source: system mix or one app
 R (in source menu)     refresh the app list
 1 / 2                  quick theme switch
+Space / P              pause / resume
++ / -                  sensitivity up / down, G - reset
+A                      toggle auto-gain (AUTO / MANUAL)
+C                      cycle bar color (Height / Frequency / Mono)
+H / ? / F1             help overlay, Esc - back
 Q or Ctrl+C            quit
 ```
 

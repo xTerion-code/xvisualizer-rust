@@ -26,6 +26,11 @@ pub fn print_help() {
     println!("  S                      capture source: system mix or one app");
     println!("  R (in source menu)     refresh the app list");
     println!("  1 / 2                  quick theme switch");
+    println!("  Space / P              pause / resume");
+    println!("  + / -                  sensitivity up / down, G - reset");
+    println!("  A                      toggle auto-gain");
+    println!("  C                      cycle bar color");
+    println!("  H / ?                  help overlay");
     println!("  Q or Ctrl+C            quit");
 }
 

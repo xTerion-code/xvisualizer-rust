@@ -1,3 +1,29 @@
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub enum ColorMode {
+    #[default]
+    Height,
+    Frequency,
+    Mono,
+}
+
+impl ColorMode {
+    pub fn next(self) -> Self {
+        match self {
+            ColorMode::Height => ColorMode::Frequency,
+            ColorMode::Frequency => ColorMode::Mono,
+            ColorMode::Mono => ColorMode::Height,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            ColorMode::Height => "Height",
+            ColorMode::Frequency => "Frequency",
+            ColorMode::Mono => "Mono",
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Theme {
     Classic,

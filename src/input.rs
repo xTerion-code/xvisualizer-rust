@@ -4,7 +4,7 @@ use std::time::Duration;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::source::{CaptureTarget, PlaybackStream, list_playback_streams};
-use crate::theme::Theme;
+use crate::theme::{ColorMode, Theme};
 
 pub struct UiState {
     pub current: Theme,
@@ -14,6 +14,9 @@ pub struct UiState {
     pub apps: Vec<PlaybackStream>,
     pub source_selected: usize,
     pub in_source_menu: bool,
+    pub paused: bool,
+    pub color: ColorMode,
+    pub in_help: bool,
 }
 
 // Source switching reroutes PulseAudio and restarts capture, so the handler
@@ -21,6 +24,10 @@ pub struct UiState {
 pub enum UiEvent {
     SelectSystem,
     SelectStream(PlaybackStream),
+    GainUp,
+    GainDown,
+    GainReset,
+    ToggleAutoGain,
 }
 
 impl UiState {
@@ -34,12 +41,16 @@ impl UiState {
             apps: Vec::new(),
             source_selected: 0,
             in_source_menu: false,
+            paused: false,
+            color: ColorMode::default(),
+            in_help: false,
         }
     }
 
     fn open_menu(&mut self) {
         self.selected = self.current.index();
         self.in_source_menu = false;
+        self.in_help = false;
         self.in_menu = true;
     }
 
@@ -52,6 +63,7 @@ impl UiState {
         self.apps = list_playback_streams();
         self.source_selected = self.target.menu_index(&self.apps);
         self.in_menu = false;
+        self.in_help = false;
         self.in_source_menu = true;
     }
 
@@ -74,6 +86,18 @@ impl UiState {
     fn cancel(&mut self) {
         self.selected = self.current.index();
         self.in_menu = false;
+    }
+
+    fn toggle_pause(&mut self) {
+        self.paused = !self.paused;
+    }
+
+    fn cycle_color(&mut self) {
+        self.color = self.color.next();
+    }
+
+    fn toggle_help(&mut self) {
+        self.in_help = !self.in_help;
     }
 }
 
@@ -148,14 +172,27 @@ fn handle_key(state: &mut UiState, key: KeyEvent) -> Action {
     if is_quit(key) {
         return Action::Quit;
     }
+    if state.in_help {
+        handle_help_key(state, key);
+        return Action::Nothing;
+    }
     if state.in_source_menu {
         handle_source_key(state, key)
     } else if state.in_menu {
         handle_menu_key(state, key);
         Action::Nothing
     } else {
-        handle_visualizer_key(state, key);
-        Action::Nothing
+        handle_visualizer_key(state, key)
+    }
+}
+
+fn handle_help_key(state: &mut UiState, key: KeyEvent) {
+    match key.code {
+        // Any of these closes the overlay; visualizer keys stay inert behind it.
+        KeyCode::Esc | KeyCode::Enter | KeyCode::Char(' ') => state.in_help = false,
+        KeyCode::Char('?') | KeyCode::Char('h') | KeyCode::Char('H') => state.in_help = false,
+        KeyCode::F(1) => state.in_help = false,
+        _ => {}
     }
 }
 
@@ -187,6 +224,15 @@ fn handle_visualizer_key(state: &mut UiState, key: KeyEvent) -> Action {
         | KeyCode::Tab
         | KeyCode::F(2) => state.open_menu(),
         KeyCode::Char('s') | KeyCode::Char('S') => state.open_source_menu(),
+        KeyCode::Char(' ') | KeyCode::Char('p') | KeyCode::Char('P') => state.toggle_pause(),
+        KeyCode::Char('+') | KeyCode::Char('=') => return Action::Emit(UiEvent::GainUp),
+        KeyCode::Char('-') | KeyCode::Char('_') => return Action::Emit(UiEvent::GainDown),
+        KeyCode::Char('g') | KeyCode::Char('G') => return Action::Emit(UiEvent::GainReset),
+        KeyCode::Char('a') | KeyCode::Char('A') => return Action::Emit(UiEvent::ToggleAutoGain),
+        KeyCode::Char('c') | KeyCode::Char('C') => state.cycle_color(),
+        KeyCode::Char('?') | KeyCode::Char('h') | KeyCode::Char('H') | KeyCode::F(1) => {
+            state.toggle_help()
+        }
         // Arrows open the menu too; the pressed arrow already moves
         // the highlight so the key feels responsive.
         KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right => {

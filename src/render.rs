@@ -4,7 +4,7 @@
 use std::fmt::Write as _;
 
 use crate::source::{CaptureTarget, PlaybackStream};
-use crate::theme::Theme;
+use crate::theme::{ColorMode, Theme};
 
 const FOOTER_HEIGHT: usize = 2;
 
@@ -16,7 +16,7 @@ pub fn truncate_chars(s: &str, max: usize) -> &str {
     &s[..idx]
 }
 
-fn row_color(row: usize, area_h: usize) -> &'static str {
+fn row_color_height(row: usize, area_h: usize) -> &'static str {
     let ratio = row as f32 / area_h.max(1) as f32;
     if ratio >= 0.85 {
         "\x1b[31m"
@@ -24,6 +24,35 @@ fn row_color(row: usize, area_h: usize) -> &'static str {
         "\x1b[33m"
     } else {
         "\x1b[32m"
+    }
+}
+
+fn freq_color(idx: usize, n_bars: usize) -> &'static str {
+    let ratio = idx as f32 / n_bars.max(1) as f32;
+    if ratio < 0.2 {
+        "\x1b[31m"
+    } else if ratio < 0.4 {
+        "\x1b[33m"
+    } else if ratio < 0.6 {
+        "\x1b[32m"
+    } else if ratio < 0.8 {
+        "\x1b[36m"
+    } else {
+        "\x1b[35m"
+    }
+}
+
+fn bar_color(
+    row: usize,
+    area_h: usize,
+    bar_idx: usize,
+    n_bars: usize,
+    mode: ColorMode,
+) -> &'static str {
+    match mode {
+        ColorMode::Height => row_color_height(row, area_h),
+        ColorMode::Frequency => freq_color(bar_idx, n_bars),
+        ColorMode::Mono => "\x1b[36m",
     }
 }
 
@@ -222,6 +251,10 @@ pub struct Visualizer<'a> {
     pub source: &'a str,
     pub theme_name: &'a str,
     pub notice: Option<&'a str>,
+    pub color_mode: ColorMode,
+    pub paused: bool,
+    pub gain: f32,
+    pub auto_gain: bool,
 }
 
 const PARTS: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
@@ -253,10 +286,16 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
         for _ in 0..pad_x {
             frame.push(' ');
         }
-        if v.use_color {
-            frame.push_str(row_color(row, area_h));
+        // Per-bar colors need a reset between bars; Height mode is uniform
+        // per row so a single prefix suffices, Frequency/Mono vary per bar.
+        let uniform_row = matches!(v.color_mode, ColorMode::Height);
+        if v.use_color && uniform_row {
+            frame.push_str(bar_color(row, area_h, 0, n_bars, v.color_mode));
         }
         for i in 0..n_bars {
+            if v.use_color && !uniform_row {
+                frame.push_str(bar_color(row, area_h, i, n_bars, v.color_mode));
+            }
             // Integer part is full blocks, the fraction is 1/8-blocks.
             let fh = bar_h[i];
             let full = fh.floor() as usize;
@@ -273,7 +312,7 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
                     if has_peak {
                         push_peak(frame, v.bar_width, v.use_color);
                         if v.use_color {
-                            frame.push_str(row_color(row, area_h));
+                            frame.push_str(bar_color(row, area_h, i, n_bars, v.color_mode));
                         }
                     } else {
                         for _ in 0..v.bar_width {
@@ -288,8 +327,8 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
             } else if has_peak {
                 push_peak(frame, v.bar_width, v.use_color);
                 if v.use_color {
-                    // Peak uses its own color; restore the row color after it.
-                    frame.push_str(row_color(row, area_h));
+                    // Peak uses its own color; restore the bar color after it.
+                    frame.push_str(bar_color(row, area_h, i, n_bars, v.color_mode));
                 }
             } else {
                 for _ in 0..v.bar_width {
@@ -300,10 +339,15 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
                 if v.use_color {
                     frame.push_str("\x1b[0m");
                     frame.push_str(&gap_str);
-                    frame.push_str(row_color(row, area_h));
+                    if uniform_row {
+                        frame.push_str(bar_color(row, area_h, 0, n_bars, v.color_mode));
+                    }
                 } else {
                     frame.push_str(&gap_str);
                 }
+            }
+            if v.use_color && !uniform_row {
+                frame.push_str("\x1b[0m");
             }
         }
         if v.use_color {
@@ -312,22 +356,88 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
         // Clear leftovers when shrinking to a narrower frame.
         frame.push_str("\x1b[K\r\n");
     }
-    let foot = match v.notice {
+    let gain_tag = if v.auto_gain { "AUTO" } else { "MAN" };
+    let status = match v.notice {
         Some(msg) => truncate_chars(msg, 60).to_string(),
+        None if v.paused => format!(
+            "Paused - Space to resume  |  {:.1}x {}  |  {}",
+            v.gain,
+            gain_tag,
+            v.color_mode.name()
+        ),
         None => {
-            let short = truncate_chars(v.source, 30);
+            let short = truncate_chars(v.source, 24);
             format!(
-                "{short}  |  {}  |  T - themes  |  S - source  |  Q - quit",
-                v.theme_name
+                "{short}  |  {}  |  {:.1}x {}  |  {}",
+                v.theme_name,
+                v.gain,
+                gain_tag,
+                v.color_mode.name()
             )
         }
     };
-    let foot_w = foot.chars().count();
-    let foot_x = v.cols.saturating_sub(foot_w) / 2;
-    frame.push_str("\r\n");
-    frame.push_str(&" ".repeat(foot_x));
-    frame.push_str(&foot);
-    frame.push_str("\x1b[K");
+    let keys = "T-themes S-source Space-pause +/-gain G-reset A-auto C-color ?-help Q-quit";
+    // Bar rows each end with `\r\n`, so the cursor is already on the first
+    // footer line: write status directly, newline only before the keys line.
+    // A leading `\r\n` before both lines would make the frame one line
+    // taller than the screen and scroll on every frame (duplicated rows).
+    for (idx, line) in [status.as_str(), keys].iter().enumerate() {
+        let w = line.chars().count();
+        let x = v.cols.saturating_sub(w) / 2;
+        if idx == 1 {
+            frame.push_str("\r\n");
+        }
+        frame.push_str(&" ".repeat(x));
+        frame.push_str(line);
+        frame.push_str("\x1b[K");
+    }
+}
+
+pub fn render_help(frame: &mut String, cols: usize, rows: usize, use_color: bool) {
+    frame.clear();
+    let _ = write!(frame, "\x1b[H");
+    let lines = [
+        "Keys",
+        "",
+        "Space / P      pause / resume",
+        "+ / -          sensitivity up / down",
+        "G              reset sensitivity to 1.0x",
+        "A              toggle auto-gain (AUTO / MAN)",
+        "C              cycle bar color (Height / Frequency / Mono)",
+        "T / Tab        theme menu",
+        "S              capture source menu",
+        "1 / 2          quick theme switch",
+        "H / ? / F1     this help",
+        "Q / Ctrl+C     quit",
+        "",
+        "Esc - back",
+    ];
+    // Exactly `rows` lines: no trailing newline past the bottom, otherwise
+    // the 120 Hz redraw would scroll and smear old rows over the screen.
+    let top = rows.saturating_sub(lines.len()) / 2;
+    for r in 0..rows {
+        if r > 0 {
+            frame.push_str("\r\n");
+        }
+        frame.push_str("\x1b[K");
+        if r < top || r >= top + lines.len() {
+            continue;
+        }
+        let line = lines[r - top];
+        if line.is_empty() {
+            continue;
+        }
+        let is_title = r == top;
+        let x = center_x(cols, line.chars().count());
+        frame.push_str(&" ".repeat(x));
+        if is_title && use_color {
+            frame.push_str("\x1b[1;36m");
+        }
+        frame.push_str(line);
+        if is_title && use_color {
+            frame.push_str("\x1b[0m");
+        }
+    }
 }
 
 fn push_peak(frame: &mut String, bar_width: usize, use_color: bool) {

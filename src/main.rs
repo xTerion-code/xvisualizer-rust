@@ -91,6 +91,33 @@ fn main() -> std::io::Result<()> {
                         }
                     }
                 }
+                UiEvent::GainUp => {
+                    analyzer.adjust_gain(true);
+                    notice = Some((
+                        format!("Sensitivity {:.2}x", analyzer.gain()),
+                        Instant::now(),
+                    ));
+                }
+                UiEvent::GainDown => {
+                    analyzer.adjust_gain(false);
+                    notice = Some((
+                        format!("Sensitivity {:.2}x", analyzer.gain()),
+                        Instant::now(),
+                    ));
+                }
+                UiEvent::GainReset => {
+                    analyzer.reset_gain();
+                    notice = Some(("Sensitivity 1.00x".to_string(), Instant::now()));
+                }
+                UiEvent::ToggleAutoGain => {
+                    analyzer.toggle_auto_gain();
+                    let state = if analyzer.auto_gain() {
+                        "AUTO"
+                    } else {
+                        "MANUAL"
+                    };
+                    notice = Some((format!("Auto-gain {state}"), Instant::now()));
+                }
             }
         }
         if !running.load(Ordering::SeqCst) {
@@ -110,9 +137,12 @@ fn main() -> std::io::Result<()> {
         if frame.capacity() < want {
             frame.reserve(want - frame.capacity());
         }
-        let bar_count = ui.current.fit_bar_count(cols, dsp::MAX_BARS);
-        if !analyzer.update(capture.queue(), bar_count, dt) {
-            break;
+        // Paused freezes bars and peaks; dt keeps updating so resume is smooth.
+        if !ui.paused {
+            let bar_count = ui.current.fit_bar_count(cols, dsp::MAX_BARS);
+            if !analyzer.update(capture.queue(), bar_count, dt) {
+                break;
+            }
         }
 
         let use_color = !parsed.no_color;
@@ -135,6 +165,8 @@ fn main() -> std::io::Result<()> {
             );
         } else if ui.in_menu {
             render::render_menu(&mut frame, cols, rows, ui.selected, ui.current, use_color);
+        } else if ui.in_help {
+            render::render_help(&mut frame, cols, rows, use_color);
         } else {
             let (bar_width, gap_width) = ui.current.dims();
             let system_label = system_monitor.as_deref().unwrap_or("mic/default");
@@ -152,6 +184,10 @@ fn main() -> std::io::Result<()> {
                     source: &source_label,
                     theme_name: ui.current.name(),
                     notice: active_notice,
+                    color_mode: ui.color,
+                    paused: ui.paused,
+                    gain: analyzer.gain(),
+                    auto_gain: analyzer.auto_gain(),
                 },
             );
         }
