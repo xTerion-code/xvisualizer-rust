@@ -23,8 +23,8 @@ mod tests {
     fn long_strings_cut_on_char_boundary() {
         assert_eq!(truncate_chars("abcdef", 4), "abcd");
         // Combining mark is its own char; cut keeps whole chars only.
-        assert_eq!(truncate_chars("а\u{301}бв", 1), "а");
-        assert_eq!(truncate_chars("а\u{301}бв", 2), "а\u{301}");
+        assert_eq!(truncate_chars("a\u{301}bc", 1), "a");
+        assert_eq!(truncate_chars("a\u{301}bc", 2), "a\u{301}");
     }
 
     #[test]
