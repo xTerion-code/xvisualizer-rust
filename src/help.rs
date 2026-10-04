@@ -35,6 +35,10 @@ pub fn render_help(frame: &mut String, cols: usize, rows: usize, use_color: bool
     ];
     // Exactly `rows` lines: no trailing newline past the bottom, otherwise
     // the 120 Hz redraw would scroll and smear old rows over the screen.
+    // Center the block as a whole: per-line centering would stagger
+    // the description column because lines differ in width.
+    let width = lines.iter().map(|l| l.chars().count()).max().unwrap_or(0);
+    let x = center_x(cols, width);
     let top = rows.saturating_sub(lines.len()) / 2;
     for r in 0..rows {
         if r > 0 {
@@ -49,14 +53,41 @@ pub fn render_help(frame: &mut String, cols: usize, rows: usize, use_color: bool
             continue;
         }
         let is_title = r == top;
-        let x = center_x(cols, line.chars().count());
-        frame.push_str(&" ".repeat(x));
+        // Title stays centered on its own; options share one left edge.
+        let pad = if is_title {
+            center_x(cols, line.chars().count())
+        } else {
+            x
+        };
+        frame.push_str(&" ".repeat(pad));
         if is_title && use_color {
             frame.push_str("\x1b[1;36m");
         }
         frame.push_str(line);
         if is_title && use_color {
             frame.push_str("\x1b[0m");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn help_options_share_one_left_edge() {
+        let mut frame = String::new();
+        render_help(&mut frame, 80, 24, false);
+        let starts: Vec<usize> = frame
+            .split("\r\n")
+            .map(|l| l.trim_start_matches("\x1b[H").trim_start_matches("\x1b[K"))
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| l.chars().take_while(|c| *c == ' ').count())
+            .collect();
+        // First line is the centered title; the rest form one left-aligned block.
+        assert!(starts.len() > 2);
+        for s in &starts[1..] {
+            assert_eq!(*s, starts[1]);
         }
     }
 }
