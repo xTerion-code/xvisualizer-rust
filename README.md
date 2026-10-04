@@ -199,26 +199,20 @@ src/
   args.rs         CLI parsing (device, theme, color flags) and --help text
   audio.rs        PulseAudio monitor capture into a sample queue; monitor auto-detection
   dsp.rs          Hann window, FFT, log bands, gain/gamma mapping, smoothing, peaks
-  gain.rs         manual sensitivity multiplier (+/-, G reset; 0.2x-8.0x)
-  color.rs        bar color modes (Height / Frequency / Mono) and ANSI codes
-  theme.rs        bar-style themes (Classic / Solid: names, geometry, width fitting)
-  symmetry.rs     spectrum layouts (Symmetric / Left-Right) and mirror mapping
+  util.rs         manual sensitivity multiplier (+/-, G reset; 0.2x-8.0x), frame text helpers
+  color.rs        bar color modes (Height / Frequency / Mono), ANSI codes, color menu
+  theme.rs        bar-style themes (Classic / Solid: names, geometry, width fitting), theme menu
+  layout.rs       spectrum layouts (Symmetric / Left-Right), mirror mapping, layout menu
   visualizer.rs   spectrum frame building and footer status
-  ui.rs           screen-state composition (menus, pause, help, setup) and app events
+  ui.rs           screen-state composition (menus, pause, help, setup), app events, shared option list
   input.rs        keyboard transport, global visualizer keys, menu dispatch, wizard chaining
-  theme_menu.rs   theme menu state, keys, and screen
-  source_menu.rs  capture-source menu state, keys, and screen
-  color_menu.rs   bar-color menu state, keys, and screen
-  layout_menu.rs  layout menu state, keys, and screen
-  choice_menu.rs  shared option-list screen for the color/layout menus
   help.rs         help overlay keys and screen
-  frame.rs        shared frame-buffer text helpers (truncation, centering)
-  source.rs       capture source selection: playback stream listing via pactl
+  source.rs       capture source selection: playback stream listing via pactl, source menu
   solo.rs         solo null-sink session and stream rerouting via loopback
   terminal.rs     alternate screen / raw mode setup and restore (RAII)
 ```
 
-Design rules: one file per feature, wired through `main.rs`. Feature state lives in the feature's own file; `main` owns the instances and passes plain values down. Other modules use only the owning file's public API.
+Design rules: one file per domain, wired through `main.rs`. Each menu lives next to its own mode/state; `main` owns the instances and passes plain values down. Other modules use only the owning file's public API.
 
 ## Customization
 
@@ -228,10 +222,10 @@ Design rules: one file per feature, wired through `main.rs`. Feature state lives
 | Different solo capture behavior | `solo.rs`: `SoloSession`, null sink and loopback management |
 | Different spectrum | `dsp.rs`: `WINDOW`, Hann table, `F_MIN` / `F_MAX`, `GAMMA`, reference magnitude |
 | Different motion | `dsp.rs`: attack/release time constants, peak fall rate |
-| Different look | `theme.rs` (`dims`, `fit_bar_count`), `color.rs` (`ColorMode`, `bar_color`), `symmetry.rs` (`LayoutMode`), `visualizer.rs` (`PARTS`, footer) |
+| Different look | `theme.rs` (`dims`, `fit_bar_count`), `color.rs` (`ColorMode`, `bar_color`), `layout.rs` (`LayoutMode`), `visualizer.rs` (`PARTS`, footer) |
 | Different keys | `input.rs` (`handle_visualizer_key`, menu dispatch), per-menu `handle_key` functions, state in `ui.rs` |
 
-Adding a theme requires extending `theme.rs`, `theme_menu.rs`, and `visualizer.rs` together. Adding a color mode requires extending `color.rs` and `color_menu.rs` together.
+Adding a theme requires extending `theme.rs` and `visualizer.rs` together. Adding a color mode requires extending `color.rs` together.
 
 ## Development
 
@@ -242,7 +236,7 @@ cargo test
 cargo fmt --check
 ```
 
-Standards: `cargo clippy --all-targets` must report zero warnings. `cargo test` covers the `pactl` output parsers in `src/source.rs` and the pure helpers (`frame`, `gain`, `symmetry`, `theme`); these run without audio hardware. Use `cargo run --release` for representative frame timing. Audio capture, solo rerouting, and rendering require a live Linux audio stack and cannot be verified headlessly.
+Standards: `cargo clippy --all-targets` must report zero warnings. `cargo test` covers the `pactl` output parsers in `src/source.rs` and the pure helpers (`util`, `layout`, `theme`); these run without audio hardware. Use `cargo run --release` for representative frame timing. Audio capture, solo rerouting, and rendering require a live Linux audio stack and cannot be verified headlessly.
 
 ## Dependencies
 

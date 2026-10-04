@@ -1,22 +1,16 @@
 mod args;
 mod audio;
-mod choice_menu;
 mod color;
-mod color_menu;
 mod dsp;
-mod frame;
-mod gain;
 mod help;
 mod input;
-mod layout_menu;
+mod layout;
 mod solo;
 mod source;
-mod source_menu;
-mod symmetry;
 mod terminal;
 mod theme;
-mod theme_menu;
 mod ui;
+mod util;
 mod visualizer;
 
 use std::io::Write;
@@ -46,7 +40,7 @@ fn main() -> std::io::Result<()> {
     thread::sleep(Duration::from_millis(120));
 
     let mut analyzer = dsp::Analyzer::new();
-    let mut gain = gain::Gain::new();
+    let mut gain = util::Gain::new();
     let mut ui = UiState::new(parsed.theme.unwrap_or(theme::Theme::Classic));
 
     // None = system mix; dropping the session moves the stream back
@@ -142,8 +136,8 @@ fn main() -> std::io::Result<()> {
         if !ui.paused {
             let display_fit = ui.theme.current.fit_bar_count(cols, dsp::MAX_BARS);
             let bar_count = match ui.layout.current {
-                symmetry::LayoutMode::Symmetric => symmetry::unique_count(display_fit),
-                symmetry::LayoutMode::LeftToRight => display_fit.max(1),
+                layout::LayoutMode::Symmetric => layout::unique_count(display_fit),
+                layout::LayoutMode::LeftToRight => display_fit.max(1),
             };
             if !analyzer.update(capture.queue(), bar_count, dt, gain.value()) {
                 break;
@@ -159,9 +153,9 @@ fn main() -> std::io::Result<()> {
             }
         };
         if ui.source.open {
-            source_menu::render(&mut frame, cols, rows, &ui.source, ui.setup, use_color);
+            source::render(&mut frame, cols, rows, &ui.source, ui.setup, use_color);
         } else if ui.theme.open {
-            theme_menu::render(
+            theme::render(
                 &mut frame,
                 cols,
                 rows,
@@ -171,7 +165,7 @@ fn main() -> std::io::Result<()> {
                 use_color,
             );
         } else if ui.color.open {
-            color_menu::render(
+            color::render(
                 &mut frame,
                 cols,
                 rows,
@@ -180,7 +174,7 @@ fn main() -> std::io::Result<()> {
                 use_color,
             );
         } else if ui.layout.open {
-            layout_menu::render(
+            layout::render(
                 &mut frame,
                 cols,
                 rows,

@@ -1,8 +1,8 @@
 use std::fmt::Write as _;
 
 use crate::color::{ColorMode, bar_color};
-use crate::frame::truncate_chars;
-use crate::symmetry::{LayoutMode, display_count, spectrum_index};
+use crate::layout::{LayoutMode, display_count, spectrum_index};
+use crate::util::truncate_chars;
 
 const FOOTER_HEIGHT: usize = 2;
 

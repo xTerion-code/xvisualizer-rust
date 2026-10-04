@@ -2,7 +2,7 @@ use std::fmt::Write as _;
 
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::frame::center_x;
+use crate::util::center_x;
 
 pub fn handle_key(open: &mut bool, key: KeyEvent) {
     match key.code {
