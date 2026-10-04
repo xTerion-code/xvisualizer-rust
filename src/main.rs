@@ -1,16 +1,21 @@
 mod args;
 mod audio;
+mod choice_menu;
 mod color;
+mod color_menu;
 mod dsp;
 mod frame;
+mod gain;
 mod help;
 mod input;
-mod menu;
+mod layout_menu;
 mod solo;
 mod source;
+mod source_menu;
 mod symmetry;
 mod terminal;
 mod theme;
+mod theme_menu;
 mod ui;
 mod visualizer;
 
@@ -41,6 +46,7 @@ fn main() -> std::io::Result<()> {
     thread::sleep(Duration::from_millis(120));
 
     let mut analyzer = dsp::Analyzer::new();
+    let mut gain = gain::Gain::new();
     let mut ui = UiState::new(parsed.theme.unwrap_or(theme::Theme::Classic));
 
     // None = system mix; dropping the session moves the stream back
@@ -67,7 +73,7 @@ fn main() -> std::io::Result<()> {
                 UiEvent::SelectSystem => {
                     drop(solo.take());
                     capture.switch(system_monitor.clone(), &running);
-                    ui.target = CaptureTarget::System;
+                    ui.source.target = CaptureTarget::System;
                     notice = Some(("Capturing system mix".to_string(), Instant::now()));
                 }
                 UiEvent::SelectStream(app) => {
@@ -91,7 +97,7 @@ fn main() -> std::io::Result<()> {
                         }
                         Err(e) => {
                             capture.switch(system_monitor.clone(), &running);
-                            ui.target = CaptureTarget::System;
+                            ui.source.target = CaptureTarget::System;
                             notice = Some((
                                 format!("Source switch failed, back to system: {e}"),
                                 Instant::now(),
@@ -100,21 +106,15 @@ fn main() -> std::io::Result<()> {
                     }
                 }
                 UiEvent::GainUp => {
-                    analyzer.adjust_gain(true);
-                    notice = Some((
-                        format!("Sensitivity {:.2}x", analyzer.gain()),
-                        Instant::now(),
-                    ));
+                    gain.up();
+                    notice = Some((format!("Sensitivity {:.2}x", gain.value()), Instant::now()));
                 }
                 UiEvent::GainDown => {
-                    analyzer.adjust_gain(false);
-                    notice = Some((
-                        format!("Sensitivity {:.2}x", analyzer.gain()),
-                        Instant::now(),
-                    ));
+                    gain.down();
+                    notice = Some((format!("Sensitivity {:.2}x", gain.value()), Instant::now()));
                 }
                 UiEvent::GainReset => {
-                    analyzer.reset_gain();
+                    gain.reset();
                     notice = Some(("Sensitivity 1.00x".to_string(), Instant::now()));
                 }
             }
@@ -140,12 +140,12 @@ fn main() -> std::io::Result<()> {
         // Symmetric layout mirrors half the bands around the center,
         // left-to-right uses the full width directly.
         if !ui.paused {
-            let display_fit = ui.current.fit_bar_count(cols, dsp::MAX_BARS);
-            let bar_count = match ui.layout {
+            let display_fit = ui.theme.current.fit_bar_count(cols, dsp::MAX_BARS);
+            let bar_count = match ui.layout.current {
                 symmetry::LayoutMode::Symmetric => symmetry::unique_count(display_fit),
                 symmetry::LayoutMode::LeftToRight => display_fit.max(1),
             };
-            if !analyzer.update(capture.queue(), bar_count, dt) {
+            if !analyzer.update(capture.queue(), bar_count, dt, gain.value()) {
                 break;
             }
         }
@@ -158,53 +158,42 @@ fn main() -> std::io::Result<()> {
                 None
             }
         };
-        if ui.in_source_menu {
-            menu::render_source_menu(
+        if ui.source.open {
+            source_menu::render(&mut frame, cols, rows, &ui.source, ui.setup, use_color);
+        } else if ui.theme.open {
+            theme_menu::render(
                 &mut frame,
                 cols,
                 rows,
-                &menu::SourceMenu {
-                    apps: &ui.apps,
-                    selected: ui.source_selected,
-                    target: &ui.target,
-                    setup: ui.setup,
-                },
-                use_color,
-            );
-        } else if ui.in_menu {
-            menu::render_menu(
-                &mut frame,
-                cols,
-                rows,
-                ui.selected,
-                ui.current,
+                ui.theme.selected,
+                ui.theme.current,
                 ui.setup,
                 use_color,
             );
-        } else if ui.in_color_menu {
-            menu::render_color_menu(
+        } else if ui.color.open {
+            color_menu::render(
                 &mut frame,
                 cols,
                 rows,
-                ui.color_selected,
-                ui.color,
+                ui.color.selected,
+                ui.color.current,
                 use_color,
             );
-        } else if ui.in_layout_menu {
-            menu::render_layout_menu(
+        } else if ui.layout.open {
+            layout_menu::render(
                 &mut frame,
                 cols,
                 rows,
-                ui.layout_selected,
-                ui.layout,
+                ui.layout.selected,
+                ui.layout.current,
                 use_color,
             );
         } else if ui.in_help {
             help::render_help(&mut frame, cols, rows, use_color);
         } else {
-            let (bar_width, gap_width) = ui.current.dims();
+            let (bar_width, gap_width) = ui.theme.current.dims();
             let system_label = system_monitor.as_deref().unwrap_or("mic/default");
-            let source_label = ui.target.label(system_label);
+            let source_label = ui.source.target.label(system_label);
             visualizer::render_visualizer(
                 &mut frame,
                 &visualizer::Visualizer {
@@ -216,12 +205,12 @@ fn main() -> std::io::Result<()> {
                     gap_width,
                     use_color,
                     source: &source_label,
-                    theme_name: ui.current.name(),
+                    theme_name: ui.theme.current.name(),
                     notice: active_notice,
-                    color_mode: ui.color,
-                    layout: ui.layout,
+                    color_mode: ui.color.current,
+                    layout: ui.layout.current,
                     paused: ui.paused,
-                    gain: analyzer.gain(),
+                    gain: gain.value(),
                 },
             );
         }

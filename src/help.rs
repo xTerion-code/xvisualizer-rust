@@ -1,6 +1,18 @@
 use std::fmt::Write as _;
 
+use crossterm::event::{KeyCode, KeyEvent};
+
 use crate::frame::center_x;
+
+pub fn handle_key(open: &mut bool, key: KeyEvent) {
+    match key.code {
+        // Any of these closes the overlay; visualizer keys stay inert behind it.
+        KeyCode::Esc | KeyCode::Enter | KeyCode::Char(' ') => *open = false,
+        KeyCode::Char('?') | KeyCode::Char('h') | KeyCode::Char('H') => *open = false,
+        KeyCode::F(1) => *open = false,
+        _ => {}
+    }
+}
 
 pub fn render_help(frame: &mut String, cols: usize, rows: usize, use_color: bool) {
     frame.clear();

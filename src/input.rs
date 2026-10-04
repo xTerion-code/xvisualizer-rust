@@ -3,48 +3,13 @@ use std::time::Duration;
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
-use crate::source::CaptureTarget;
-use crate::theme::Theme;
-use crate::ui::{UiEvent, UiState};
+use crate::help;
+use crate::ui::{MenuOutcome, UiEvent, UiState};
 
 enum Action {
     Nothing,
     Quit,
     Emit(UiEvent),
-}
-
-fn handle_source_key(state: &mut UiState, key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('w') => state.source_step(-1),
-        KeyCode::Left | KeyCode::Char('h') => state.source_step(-1),
-        KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => state.source_step(1),
-        KeyCode::Right | KeyCode::Char('l') => state.source_step(1),
-        KeyCode::Char(c @ '1'..='9') => {
-            let idx = (c as usize) - ('1' as usize);
-            if idx <= state.apps.len() {
-                state.source_selected = idx;
-            }
-        }
-        KeyCode::Char('r') | KeyCode::Char('R') => state.refresh_apps(),
-        KeyCode::Enter | KeyCode::Char(' ') => {
-            state.setup = false;
-            state.in_source_menu = false;
-            if state.source_selected == 0 {
-                state.target = CaptureTarget::System;
-                return Action::Emit(UiEvent::SelectSystem);
-            } else if let Some(app) = state.apps.get(state.source_selected - 1).cloned() {
-                state.target = CaptureTarget::Stream(app.clone());
-                return Action::Emit(UiEvent::SelectStream(app));
-            }
-        }
-        KeyCode::Esc => {
-            state.source_selected = state.target.menu_index(&state.apps);
-            state.in_source_menu = false;
-            state.setup = false;
-        }
-        _ => {}
-    }
-    Action::Nothing
 }
 
 /// Drains pending keys without blocking the frame loop.
@@ -81,93 +46,78 @@ fn handle_key(state: &mut UiState, key: KeyEvent) -> Action {
         return Action::Quit;
     }
     if state.in_help {
-        handle_help_key(state, key);
+        help::handle_key(&mut state.in_help, key);
         return Action::Nothing;
     }
-    if state.in_source_menu {
-        handle_source_key(state, key)
-    } else if state.in_menu {
-        handle_menu_key(state, key);
-        Action::Nothing
-    } else if state.in_color_menu {
-        handle_color_key(state, key);
-        Action::Nothing
-    } else if state.in_layout_menu {
-        handle_layout_key(state, key);
-        Action::Nothing
-    } else {
-        handle_visualizer_key(state, key)
-    }
-}
-
-fn handle_help_key(state: &mut UiState, key: KeyEvent) {
-    match key.code {
-        // Any of these closes the overlay; visualizer keys stay inert behind it.
-        KeyCode::Esc | KeyCode::Enter | KeyCode::Char(' ') => state.in_help = false,
-        KeyCode::Char('?') | KeyCode::Char('h') | KeyCode::Char('H') => state.in_help = false,
-        KeyCode::F(1) => state.in_help = false,
-        _ => {}
-    }
-}
-
-fn handle_menu_key(state: &mut UiState, key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('w') => state.step(-1),
-        KeyCode::Left | KeyCode::Char('h') => state.step(-1),
-        KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => state.step(1),
-        KeyCode::Right | KeyCode::Char('l') => state.step(1),
-        KeyCode::Char(c) if ('1'..='9').contains(&c) => {
-            let idx = (c as usize) - ('1' as usize);
-            if idx < Theme::all().len() {
-                state.selected = idx;
-            }
+    if state.source.open {
+        let (outcome, event) = state.source.handle_key(key);
+        if let Some(ev) = event {
+            return Action::Emit(ev);
         }
-        KeyCode::Enter | KeyCode::Char(' ') => state.confirm(),
-        KeyCode::Esc => state.cancel(),
-        _ => {}
+        if !matches!(outcome, MenuOutcome::StillOpen) {
+            state.setup = false;
+        }
+        return Action::Nothing;
     }
-    Action::Nothing
+    if state.theme.open {
+        match state.theme.handle_key(key) {
+            MenuOutcome::Confirmed if state.setup => open_color(state),
+            MenuOutcome::Cancelled => state.setup = false,
+            _ => {}
+        }
+        return Action::Nothing;
+    }
+    if state.color.open {
+        match state.color.handle_key(key) {
+            MenuOutcome::Confirmed if state.setup => open_layout(state),
+            MenuOutcome::Cancelled => state.setup = false,
+            _ => {}
+        }
+        return Action::Nothing;
+    }
+    if state.layout.open {
+        match state.layout.handle_key(key) {
+            MenuOutcome::Confirmed if state.setup => open_source(state),
+            MenuOutcome::Cancelled => state.setup = false,
+            _ => {}
+        }
+        return Action::Nothing;
+    }
+    handle_visualizer_key(state, key)
 }
 
-fn handle_color_key(state: &mut UiState, key: KeyEvent) -> Action {
-    use crate::color::ColorMode;
-    match key.code {
-        KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('w') => state.color_step(-1),
-        KeyCode::Left | KeyCode::Char('h') => state.color_step(-1),
-        KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => state.color_step(1),
-        KeyCode::Right | KeyCode::Char('l') => state.color_step(1),
-        KeyCode::Char(c) if ('1'..='9').contains(&c) => {
-            let idx = (c as usize) - ('1' as usize);
-            if idx < ColorMode::all().len() {
-                state.color_selected = idx;
-            }
-        }
-        KeyCode::Enter | KeyCode::Char(' ') => state.confirm_color(),
-        KeyCode::Esc => state.cancel_color(),
-        _ => {}
-    }
-    Action::Nothing
+fn open_theme(state: &mut UiState) {
+    state.theme.open();
+    state.source.open = false;
+    state.color.open = false;
+    state.layout.open = false;
+    state.in_help = false;
 }
 
-fn handle_layout_key(state: &mut UiState, key: KeyEvent) -> Action {
-    use crate::symmetry::LayoutMode;
-    match key.code {
-        KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('w') => state.layout_step(-1),
-        KeyCode::Left | KeyCode::Char('h') => state.layout_step(-1),
-        KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => state.layout_step(1),
-        KeyCode::Right | KeyCode::Char('l') => state.layout_step(1),
-        KeyCode::Char(c) if ('1'..='9').contains(&c) => {
-            let idx = (c as usize) - ('1' as usize);
-            if idx < LayoutMode::all().len() {
-                state.layout_selected = idx;
-            }
-        }
-        KeyCode::Enter | KeyCode::Char(' ') => state.confirm_layout(),
-        KeyCode::Esc => state.cancel_layout(),
-        _ => {}
-    }
-    Action::Nothing
+fn open_source(state: &mut UiState) {
+    state.source.open();
+    state.theme.open = false;
+    state.color.open = false;
+    state.layout.open = false;
+    state.in_help = false;
 }
+
+fn open_color(state: &mut UiState) {
+    state.color.open();
+    state.theme.open = false;
+    state.source.open = false;
+    state.layout.open = false;
+    state.in_help = false;
+}
+
+fn open_layout(state: &mut UiState) {
+    state.layout.open();
+    state.theme.open = false;
+    state.source.open = false;
+    state.color.open = false;
+    state.in_help = false;
+}
+
 fn handle_visualizer_key(state: &mut UiState, key: KeyEvent) -> Action {
     match key.code {
         KeyCode::Char('t')
@@ -175,31 +125,29 @@ fn handle_visualizer_key(state: &mut UiState, key: KeyEvent) -> Action {
         | KeyCode::Char('m')
         | KeyCode::Char('M')
         | KeyCode::Tab
-        | KeyCode::F(2) => state.open_menu(),
-        KeyCode::Char('s') | KeyCode::Char('S') => state.open_source_menu(),
+        | KeyCode::F(2) => open_theme(state),
+        KeyCode::Char('s') | KeyCode::Char('S') => open_source(state),
         KeyCode::Char(' ') | KeyCode::Char('p') | KeyCode::Char('P') => state.toggle_pause(),
         KeyCode::Char('+') | KeyCode::Char('=') => return Action::Emit(UiEvent::GainUp),
         KeyCode::Char('-') | KeyCode::Char('_') => return Action::Emit(UiEvent::GainDown),
         KeyCode::Char('g') | KeyCode::Char('G') => return Action::Emit(UiEvent::GainReset),
-        KeyCode::Char('c') | KeyCode::Char('C') => state.cycle_color(),
-        KeyCode::Char('l') | KeyCode::Char('L') => state.toggle_layout(),
+        KeyCode::Char('c') | KeyCode::Char('C') => state.color.cycle(),
+        KeyCode::Char('l') | KeyCode::Char('L') => state.layout.toggle(),
         KeyCode::Char('?') | KeyCode::Char('h') | KeyCode::Char('H') | KeyCode::F(1) => {
             state.toggle_help()
         }
         // Arrows open the menu too; the pressed arrow already moves
         // the highlight so the key feels responsive.
         KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right => {
-            state.open_menu();
+            open_theme(state);
             match key.code {
-                KeyCode::Down | KeyCode::Right => state.step(1),
-                _ => state.step(-1),
+                KeyCode::Down | KeyCode::Right => state.theme.step(1),
+                _ => state.theme.step(-1),
             }
         }
         KeyCode::Char(c) if ('1'..='9').contains(&c) => {
             let idx = (c as usize) - ('1' as usize);
-            if idx < Theme::all().len() {
-                state.current = Theme::all()[idx];
-            }
+            state.theme.quick(idx);
         }
         _ => {}
     }

@@ -116,11 +116,16 @@ src/
   args.rs      — CLI parsing (device, theme, color flags)
   audio.rs     — PulseAudio monitor capture into a sample queue
   dsp.rs       — Hann window, FFT, log bands, fixed reference, smoothing
+  gain.rs      — manual sensitivity multiplier (+/-, G reset)
   color.rs     — bar color modes (Height / Frequency / Mono)
   theme.rs     — bar-style themes (geometry and names)
-  ui.rs        — UI state (theme, source, pause, color, layout, setup, help)
-  input.rs     — keyboard decoding: menu / source / visualizer / help keys
-  menu.rs      — theme menu and capture-source menu screens
+  ui.rs        — screen-state composition (theme/source/color/layout menus, pause, help, setup) and app events
+  input.rs     — keyboard transport, global visualizer keys, per-screen dispatch with setup-wizard chaining
+  theme_menu.rs — theme menu state, keys and screen
+  source_menu.rs — capture-source menu state, keys and screen
+  color_menu.rs — bar-color menu state, keys and screen
+  layout_menu.rs — layout menu state, keys and screen
+  choice_menu.rs — shared option-list screen for color/layout menus
   visualizer.rs — spectrum frame building and footer status
   help.rs      — help overlay screen
   frame.rs     — shared frame-buffer text helpers
