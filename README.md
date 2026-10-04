@@ -36,7 +36,7 @@ Terminal ASCII visualizer for system audio: low-latency PulseAudio monitor captu
 ## Install and run
 
 ```bash
-git clone git@github.com:xTerion-code/xvisualizer-rust.git
+git clone https://github.com/xTerion-code/xvisualizer-rust.git
 cd xvisualizer-rust
 cargo run --release
 ```
