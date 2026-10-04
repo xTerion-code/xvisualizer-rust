@@ -132,6 +132,7 @@ fn handle_visualizer_key(state: &mut UiState, key: KeyEvent) -> Action {
         KeyCode::Char('s') | KeyCode::Char('S') => state.open_source_menu(),
         KeyCode::Char(' ') | KeyCode::Char('p') | KeyCode::Char('P') => state.toggle_pause(),
         KeyCode::Char('c') | KeyCode::Char('C') => state.cycle_color(),
+        KeyCode::Char('v') | KeyCode::Char('V') => state.toggle_layout(),
         KeyCode::Char('?') | KeyCode::Char('h') | KeyCode::Char('H') | KeyCode::F(1) => {
             state.toggle_help()
         }

@@ -119,12 +119,15 @@ fn main() -> std::io::Result<()> {
             frame.reserve(want - frame.capacity());
         }
         // Paused freezes bars and peaks; dt keeps updating so resume is smooth.
-        // Symmetric view: analyzer computes half the bands (low -> high),
-        // the visualizer mirrors them with bass in the center.
+        // Symmetric layout mirrors half the bands around the center,
+        // left-to-right uses the full width directly.
         if !ui.paused {
             let display_fit = ui.current.fit_bar_count(cols, dsp::MAX_BARS);
-            let uniq = symmetry::unique_count(display_fit);
-            if !analyzer.update(capture.queue(), uniq, dt) {
+            let bar_count = match ui.layout {
+                symmetry::LayoutMode::Symmetric => symmetry::unique_count(display_fit),
+                symmetry::LayoutMode::LeftToRight => display_fit.max(1),
+            };
+            if !analyzer.update(capture.queue(), bar_count, dt) {
                 break;
             }
         }
@@ -169,6 +172,7 @@ fn main() -> std::io::Result<()> {
                     theme_name: ui.current.name(),
                     notice: active_notice,
                     color_mode: ui.color,
+                    layout: ui.layout,
                     paused: ui.paused,
                 },
             );

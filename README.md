@@ -18,7 +18,8 @@ Terminal ASCII visualizer for system audio: low-latency PulseAudio monitor captu
 - Two bar themes with an in-program menu (arrows + Enter):
   `Classic` (thin bars with gaps) and `Solid` (wide bars without gaps).
   Press `T`/`Tab` or any arrow to open the menu, `1`/`2` for a quick switch
-- Pause (`Space`/`P`), help overlay (`H`/`?`/`F1`)
+- Pause (`Space`/`P`), spectrum layout toggle (`V`: Symmetric / Left-Right),
+  help overlay (`H`/`?`/`F1`)
 - Bar count adapts to terminal width (8–64), flicker-free single-write frames
 - Alternate screen: the terminal is restored on exit
 - `Ctrl+C` exit with cursor and screen restored
@@ -58,6 +59,7 @@ S                      capture source: system mix or one app
 R (in source menu)     refresh the app list
 1 / 2                  quick theme switch
 Space / P              pause / resume
+V                      toggle layout (Symmetric / Left-Right)
 C                      cycle bar color (Height / Frequency / Mono)
 H / ? / F1             help overlay, Esc - back
 Q or Ctrl+C            quit
@@ -112,7 +114,7 @@ src/
   dsp.rs       — Hann window, FFT, log bands, fixed reference, smoothing
   color.rs     — bar color modes (Height / Frequency / Mono)
   theme.rs     — bar-style themes (geometry and names)
-  ui.rs        — UI state (theme, source, pause, color, help)
+  ui.rs        — UI state (theme, source, pause, color, layout, help)
   input.rs     — keyboard decoding: menu / source / visualizer / help keys
   menu.rs      — theme menu and capture-source menu screens
   visualizer.rs — spectrum frame building and footer status
@@ -129,7 +131,7 @@ Extension points:
 - solo app capture — `solo.rs`: `SoloSession`, stream rerouting via null sink + loopback
 - different spectrum — `dsp.rs`: `WINDOW`, Hann table, `F_MIN`/`F_MAX`, `GAMMA`
 - different motion — `dsp.rs`: attack/release taus, peak fall
-- different look — `theme.rs` (`dims`, new themes), `color.rs` (`ColorMode`, `bar_color`) and `visualizer.rs` (`PARTS`, footer)
+- different look — `theme.rs` (`dims`, new themes), `color.rs` (`ColorMode`, `bar_color`), `symmetry.rs` (`LayoutMode`) and `visualizer.rs` (`PARTS`, footer)
 - different keys — `input.rs`: `handle_menu_key()`, `handle_visualizer_key()`; state in `ui.rs`
 
 ## Development

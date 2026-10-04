@@ -1,5 +1,6 @@
 use crate::color::ColorMode;
 use crate::source::{CaptureTarget, PlaybackStream, list_playback_streams};
+use crate::symmetry::LayoutMode;
 use crate::theme::Theme;
 
 pub struct UiState {
@@ -12,6 +13,7 @@ pub struct UiState {
     pub in_source_menu: bool,
     pub paused: bool,
     pub color: ColorMode,
+    pub layout: LayoutMode,
     pub in_help: bool,
 }
 
@@ -35,6 +37,7 @@ impl UiState {
             in_source_menu: false,
             paused: false,
             color: ColorMode::default(),
+            layout: LayoutMode::default(),
             in_help: false,
         }
     }
@@ -86,6 +89,10 @@ impl UiState {
 
     pub(crate) fn cycle_color(&mut self) {
         self.color = self.color.next();
+    }
+
+    pub(crate) fn toggle_layout(&mut self) {
+        self.layout = self.layout.next();
     }
 
     pub(crate) fn toggle_help(&mut self) {

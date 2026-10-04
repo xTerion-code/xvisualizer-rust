@@ -1,3 +1,28 @@
+/// Spectrum layout: mirrored around the center (bass in the middle)
+/// or plain left-to-right (bass on the left, treble on the right).
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub enum LayoutMode {
+    #[default]
+    Symmetric,
+    LeftToRight,
+}
+
+impl LayoutMode {
+    pub fn next(self) -> Self {
+        match self {
+            LayoutMode::Symmetric => LayoutMode::LeftToRight,
+            LayoutMode::LeftToRight => LayoutMode::Symmetric,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            LayoutMode::Symmetric => "Symmetric",
+            LayoutMode::LeftToRight => "Left-Right",
+        }
+    }
+}
+
 /// Center-symmetric spectrum mapping: bass in the middle, treble at the edges.
 /// The analyzer produces `unique` bands (low -> high); the visualizer mirrors
 /// them into `unique * 2 - 1` display bars so left and right stay symmetric.
