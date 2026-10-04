@@ -18,8 +18,7 @@ Terminal ASCII visualizer for system audio: low-latency PulseAudio monitor captu
 - Two bar themes with an in-program menu (arrows + Enter):
   `Classic` (thin bars with gaps) and `Solid` (wide bars without gaps).
   Press `T`/`Tab` or any arrow to open the menu, `1`/`2` for a quick switch
-- Pause (`Space`/`P`), sensitivity (`+`/`-`, `G` reset), auto-gain toggle (`A`),
-  help overlay (`H`/`?`/`F1`)
+- Pause (`Space`/`P`), help overlay (`H`/`?`/`F1`)
 - Bar count adapts to terminal width (8–64), flicker-free single-write frames
 - Alternate screen: the terminal is restored on exit
 - `Ctrl+C` exit with cursor and screen restored
@@ -59,8 +58,6 @@ S                      capture source: system mix or one app
 R (in source menu)     refresh the app list
 1 / 2                  quick theme switch
 Space / P              pause / resume
-+ / -                  sensitivity up / down, G - reset
-A                      toggle auto-gain (AUTO / MANUAL)
 C                      cycle bar color (Height / Frequency / Mono)
 H / ? / F1             help overlay, Esc - back
 Q or Ctrl+C            quit
@@ -94,12 +91,12 @@ Rendering depends on the terminal font and width; the bar count scales with the 
 
 ```text
 Pulse monitor → capture thread → short sample queue → Hann + FFT (per frame)
-  → log bands → auto-gain → inertial smoothing → fixed-height frame → stdout
+  → log bands → inertial smoothing → fixed-height frame → stdout
 ```
 
 - Capture: blocking `pa_simple` reads of 512 stereo frames (~10.7 ms), explicit low-latency `BufferAttr` (`fragsize` ~10 ms, buffer ~43 ms) instead of the ~2 s server default.
 - Queue: only the newest ~170 ms of mono samples are kept; each frame analyzes the newest 2048-sample window (~43 ms).
-- Spectrum: Hann-windowed forward FFT, peak magnitude per log band, gamma `0.6` so quiet bands stay visible, adaptive gain (fast attack, ~0.4 s release).
+- Spectrum: Hann-windowed forward FFT, peak magnitude per log band, gamma `0.6` so quiet bands stay visible.
 - Motion: per-bar exponential easing — attack tau ~12 ms (1–2 frames), release tau ~160 ms — peak markers fall linearly in ~0.8 s.
 - Render: one buffered `write` + `flush` per frame at ~120 Hz, cursor homed once (`ESC[H`), no full-screen clear, so no flicker.
 
@@ -112,7 +109,7 @@ src/
   main.rs      — entry point and frame-loop orchestration
   args.rs      — CLI parsing (device, theme, color flags)
   audio.rs     — PulseAudio monitor capture into a sample queue
-  dsp.rs       — Hann window, FFT, log bands, adaptive gain, smoothing
+  dsp.rs       — Hann window, FFT, log bands, fixed reference, smoothing
   color.rs     — bar color modes (Height / Frequency / Mono)
   theme.rs     — bar-style themes (geometry and names)
   ui.rs        — UI state (theme, source, pause, color, help)
@@ -131,7 +128,7 @@ Extension points:
 - different source / latency — `audio.rs`: `CaptureSession::switch()`, `BufferAttr`, `READ_FRAMES`
 - solo app capture — `solo.rs`: `SoloSession`, stream rerouting via null sink + loopback
 - different spectrum — `dsp.rs`: `WINDOW`, Hann table, `F_MIN`/`F_MAX`, `GAMMA`
-- different motion — `dsp.rs`: attack/release taus, gain release, peak fall
+- different motion — `dsp.rs`: attack/release taus, peak fall
 - different look — `theme.rs` (`dims`, new themes), `color.rs` (`ColorMode`, `bar_color`) and `visualizer.rs` (`PARTS`, footer)
 - different keys — `input.rs`: `handle_menu_key()`, `handle_visualizer_key()`; state in `ui.rs`
 

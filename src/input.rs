@@ -131,10 +131,6 @@ fn handle_visualizer_key(state: &mut UiState, key: KeyEvent) -> Action {
         | KeyCode::F(2) => state.open_menu(),
         KeyCode::Char('s') | KeyCode::Char('S') => state.open_source_menu(),
         KeyCode::Char(' ') | KeyCode::Char('p') | KeyCode::Char('P') => state.toggle_pause(),
-        KeyCode::Char('+') | KeyCode::Char('=') => return Action::Emit(UiEvent::GainUp),
-        KeyCode::Char('-') | KeyCode::Char('_') => return Action::Emit(UiEvent::GainDown),
-        KeyCode::Char('g') | KeyCode::Char('G') => return Action::Emit(UiEvent::GainReset),
-        KeyCode::Char('a') | KeyCode::Char('A') => return Action::Emit(UiEvent::ToggleAutoGain),
         KeyCode::Char('c') | KeyCode::Char('C') => state.cycle_color(),
         KeyCode::Char('?') | KeyCode::Char('h') | KeyCode::Char('H') | KeyCode::F(1) => {
             state.toggle_help()

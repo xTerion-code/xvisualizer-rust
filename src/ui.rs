@@ -20,10 +20,6 @@ pub struct UiState {
 pub enum UiEvent {
     SelectSystem,
     SelectStream(PlaybackStream),
-    GainUp,
-    GainDown,
-    GainReset,
-    ToggleAutoGain,
 }
 
 impl UiState {

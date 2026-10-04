@@ -99,33 +99,6 @@ fn main() -> std::io::Result<()> {
                         }
                     }
                 }
-                UiEvent::GainUp => {
-                    analyzer.adjust_gain(true);
-                    notice = Some((
-                        format!("Sensitivity {:.2}x", analyzer.gain()),
-                        Instant::now(),
-                    ));
-                }
-                UiEvent::GainDown => {
-                    analyzer.adjust_gain(false);
-                    notice = Some((
-                        format!("Sensitivity {:.2}x", analyzer.gain()),
-                        Instant::now(),
-                    ));
-                }
-                UiEvent::GainReset => {
-                    analyzer.reset_gain();
-                    notice = Some(("Sensitivity 1.00x".to_string(), Instant::now()));
-                }
-                UiEvent::ToggleAutoGain => {
-                    analyzer.toggle_auto_gain();
-                    let state = if analyzer.auto_gain() {
-                        "AUTO"
-                    } else {
-                        "MANUAL"
-                    };
-                    notice = Some((format!("Auto-gain {state}"), Instant::now()));
-                }
             }
         }
         if !running.load(Ordering::SeqCst) {
@@ -197,8 +170,6 @@ fn main() -> std::io::Result<()> {
                     notice: active_notice,
                     color_mode: ui.color,
                     paused: ui.paused,
-                    gain: analyzer.gain(),
-                    auto_gain: analyzer.auto_gain(),
                 },
             );
         }

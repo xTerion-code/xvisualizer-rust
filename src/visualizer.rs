@@ -19,8 +19,6 @@ pub struct Visualizer<'a> {
     pub notice: Option<&'a str>,
     pub color_mode: ColorMode,
     pub paused: bool,
-    pub gain: f32,
-    pub auto_gain: bool,
 }
 
 const PARTS: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
@@ -131,27 +129,15 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
         // Clear leftovers when shrinking to a narrower frame.
         frame.push_str("\x1b[K\r\n");
     }
-    let gain_tag = if v.auto_gain { "AUTO" } else { "MAN" };
     let status = match v.notice {
         Some(msg) => truncate_chars(msg, 60).to_string(),
-        None if v.paused => format!(
-            "Paused - Space to resume  |  {:.1}x {}  |  {}",
-            v.gain,
-            gain_tag,
-            v.color_mode.name()
-        ),
+        None if v.paused => format!("Paused - Space to resume  |  {}", v.color_mode.name()),
         None => {
             let short = truncate_chars(v.source, 24);
-            format!(
-                "{short}  |  {}  |  {:.1}x {}  |  {}",
-                v.theme_name,
-                v.gain,
-                gain_tag,
-                v.color_mode.name()
-            )
+            format!("{short}  |  {}  |  {}", v.theme_name, v.color_mode.name())
         }
     };
-    let keys = "T-themes S-source Space-pause +/-gain G-reset A-auto C-color ?-help Q-quit";
+    let keys = "T-themes S-source Space-pause C-color ?-help Q-quit";
     // Bar rows each end with `\r\n`, so the cursor is already on the first
     // footer line: write status directly, newline only before the keys line.
     // A leading `\r\n` before both lines would make the frame one line
