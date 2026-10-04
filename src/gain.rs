@@ -33,3 +33,23 @@ impl Default for Gain {
         Self { value: 1.0 }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn steps_clamp_at_bounds() {
+        let mut g = Gain::new();
+        for _ in 0..20 {
+            g.up();
+        }
+        assert_eq!(g.value(), MAX);
+        for _ in 0..40 {
+            g.down();
+        }
+        assert_eq!(g.value(), MIN);
+        g.reset();
+        assert_eq!(g.value(), 1.0);
+    }
+}

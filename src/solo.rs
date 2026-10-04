@@ -2,7 +2,11 @@
 // whose monitor is recorded, plus a loopback so it stays audible.
 // Dropping the session moves the stream back and unloads the modules.
 
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use crate::source::{PlaybackStream, pactl};
+
+static SINK_SEQ: AtomicU32 = AtomicU32::new(0);
 
 /// Active solo capture; restores everything on drop, including on panic.
 pub struct SoloSession {
@@ -16,12 +20,14 @@ pub struct SoloSession {
 
 impl SoloSession {
     pub fn start(stream: &PlaybackStream) -> Result<Self, String> {
-        // pid + time makes the sink unique across parallel app instances.
+        // pid + time + sequence: unique across parallel app instances
+        // and rapid successive solo switches.
         let uniq = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.subsec_nanos())
             .unwrap_or(0);
-        let null_sink = format!("xviz_cap_{}_{}", std::process::id(), uniq);
+        let seq = SINK_SEQ.fetch_add(1, Ordering::Relaxed);
+        let null_sink = format!("xviz_cap_{}_{}_{}", std::process::id(), uniq, seq);
         let null_module: u32 = pactl(&[
             "load-module",
             "module-null-sink",

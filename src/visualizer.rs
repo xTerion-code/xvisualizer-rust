@@ -64,11 +64,6 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
     let pad_x = v.cols.saturating_sub(width) / 2;
     frame.clear();
     let _ = write!(frame, "\x1b[H");
-    let gap_str: String = if v.gap_width > 0 {
-        " ".repeat(v.gap_width)
-    } else {
-        String::new()
-    };
     for row in (0..area_h).rev() {
         for _ in 0..pad_x {
             frame.push(' ');
@@ -139,12 +134,12 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
             if v.gap_width > 0 && i + 1 < n_bars {
                 if v.use_color {
                     frame.push_str("\x1b[0m");
-                    frame.push_str(&gap_str);
+                    push_gap(frame, v.gap_width);
                     if uniform_row {
                         frame.push_str(bar_color(row, area_h, 0, n_bars, v.color_mode));
                     }
                 } else {
-                    frame.push_str(&gap_str);
+                    push_gap(frame, v.gap_width);
                 }
             }
             if v.use_color && !uniform_row {
@@ -190,6 +185,12 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
         frame.push_str(&" ".repeat(x));
         frame.push_str(line);
         frame.push_str("\x1b[K");
+    }
+}
+
+fn push_gap(frame: &mut String, gap_width: usize) {
+    for _ in 0..gap_width {
+        frame.push(' ');
     }
 }
 

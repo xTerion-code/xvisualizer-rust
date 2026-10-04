@@ -79,18 +79,18 @@ fn parse_sink_inputs(out: &str) -> Vec<PlaybackStream> {
         } else if let Some(r) = cur.as_mut() {
             if t == "Properties:" {
                 in_props = true;
-            } else if in_props {
-                if let Some((k, v)) = t.split_once('=') {
-                    let v = v.trim().trim_matches('"').to_string();
-                    match k.trim() {
-                        "application.name" => r.app = Some(v),
-                        "media.name" => r.media = Some(v),
-                        "application.process.binary" => r.binary = Some(v),
-                        _ => {}
-                    }
-                }
             } else if let Some(rest) = t.strip_prefix("Sink:") {
+                // Parsed regardless of Properties position; field order
+                // differs across pactl/PipeWire versions.
                 r.sink = rest.trim().parse().ok();
+            } else if in_props && let Some((k, v)) = t.split_once('=') {
+                let v = v.trim().trim_matches('"').to_string();
+                match k.trim() {
+                    "application.name" => r.app = Some(v),
+                    "media.name" => r.media = Some(v),
+                    "application.process.binary" => r.binary = Some(v),
+                    _ => {}
+                }
             }
         }
     }
@@ -190,5 +190,18 @@ Sink Input #550\n\
 \tProperties:\n\
 \t\tapplication.name = \"broken\"\n";
         assert!(parse_sink_inputs(sample).is_empty());
+    }
+
+    #[test]
+    fn parses_sink_after_properties() {
+        let sample = "Sink Input #9\n\
+\tProperties:\n\
+\t\tapplication.name = \"late\"\n\
+\tSink: 3\n";
+        let apps = parse_sink_inputs(sample);
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].input, 9);
+        assert_eq!(apps[0].sink, 3);
+        assert_eq!(apps[0].app, "late");
     }
 }

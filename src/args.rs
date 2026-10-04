@@ -20,9 +20,9 @@ pub fn print_help() {
     println!("  -h, --help        show this help");
     println!();
     println!("Keys (in program):");
-    println!("  Up/Down or Left/Right  choose theme in the menu");
+    println!("  Up/Down or Left/Right  choose theme in the menu (also opens it)");
     println!("  Enter                  apply theme");
-    println!("  T / Tab                open theme menu, Esc - back");
+    println!("  T / Tab / M / F2       open theme menu, Esc - back");
     println!("  S                      capture source: system mix or one app");
     println!("  R (in source menu)     refresh the app list");
     println!("  1 / 2                  quick theme switch");
@@ -30,7 +30,7 @@ pub fn print_help() {
     println!("  + / -                  sensitivity up / down, G - reset");
     println!("  L                      toggle layout (Symmetric / Left-Right)");
     println!("  C                      cycle bar color");
-    println!("  H / ?                  help overlay");
+    println!("  H / ? / F1             help overlay");
     println!("  Q or Ctrl+C            quit");
 }
 
@@ -45,9 +45,11 @@ fn parse_from(it: impl Iterator<Item = String>) -> Args {
     let mut theme: Option<Theme> = None;
     let mut it = it.peekable();
     while let Some(a) = it.next() {
-        // Support both `--flag value` and `--flag=value`.
+        // Support both `--flag value`, `--flag=value` and `-d value`, `-d=value`.
         let (flag, inline) = match a.split_once('=') {
-            Some((f, v)) if f.starts_with("--") => (f.to_string(), Some(v.to_string())),
+            Some((f, v)) if f.starts_with("--") || f == "-d" || f == "-t" => {
+                (f.to_string(), Some(v.to_string()))
+            }
             _ => (a.clone(), None),
         };
         match flag.as_str() {

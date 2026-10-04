@@ -25,7 +25,7 @@ pub fn render_help(frame: &mut String, cols: usize, rows: usize, use_color: bool
         "G              reset sensitivity to 1.0x",
         "L              toggle layout (Symmetric / Left-Right)",
         "C              cycle bar color (Height / Frequency / Mono)",
-        "T / Tab        theme menu",
+        "T / Tab / M    theme menu (arrows open it too)",
         "S              capture source menu",
         "1 / 2          quick theme switch",
         "H / ? / F1     this help",

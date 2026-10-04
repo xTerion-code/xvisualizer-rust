@@ -56,3 +56,25 @@ impl Theme {
         n
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classic_leaves_room_for_margins() {
+        // Classic cell is 2 wide; 80 cols minus 4 margin fit 38 bars.
+        assert_eq!(Theme::Classic.fit_bar_count(80, 64), 38);
+    }
+
+    #[test]
+    fn solid_uses_full_width() {
+        assert_eq!(Theme::Solid.fit_bar_count(80, 64), 38);
+    }
+
+    #[test]
+    fn narrow_window_shrinks_to_fit() {
+        assert_eq!(Theme::Classic.fit_bar_count(3, 64), 1);
+        assert_eq!(Theme::Solid.fit_bar_count(1, 64), 1);
+    }
+}

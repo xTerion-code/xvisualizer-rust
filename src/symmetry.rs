@@ -60,3 +60,29 @@ pub fn spectrum_index(display_idx: usize, unique: usize) -> usize {
     let center = unique - 1;
     (display_idx as isize - center as isize).unsigned_abs()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mirror_counts_round_trip() {
+        assert_eq!(unique_count(7), 4);
+        assert_eq!(display_count(4), 7);
+        assert_eq!(display_count(1), 1);
+    }
+
+    #[test]
+    fn bass_sits_in_the_center() {
+        // unique=3 -> display [2,1,0,1,2], center is bass.
+        assert_eq!(spectrum_index(0, 3), 2);
+        assert_eq!(spectrum_index(2, 3), 0);
+        assert_eq!(spectrum_index(4, 3), 2);
+    }
+
+    #[test]
+    fn single_band_maps_to_zero() {
+        assert_eq!(spectrum_index(5, 1), 0);
+        assert_eq!(spectrum_index(0, 0), 0);
+    }
+}

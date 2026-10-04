@@ -55,9 +55,9 @@ Exit: `Ctrl+C` or `Q`.
 Keys (in program):
 
 ```text
-Up/Down or Left/Right  choose theme in the menu
+Up/Down or Left/Right  choose theme in the menu (also opens it)
 Enter                  apply theme
-T / Tab                open theme menu, Esc - back
+T / Tab / M / F2       open theme menu, Esc - back
 S                      capture source: system mix or one app
 R (in source menu)     refresh the app list
 1 / 2                  quick theme switch
