@@ -2,6 +2,7 @@ use std::fmt::Write as _;
 
 use crate::color::{ColorMode, bar_color};
 use crate::frame::truncate_chars;
+use crate::symmetry::{display_count, spectrum_index};
 
 const FOOTER_HEIGHT: usize = 2;
 
@@ -25,17 +26,23 @@ pub struct Visualizer<'a> {
 const PARTS: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 
 pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
-    let n_bars = v.bars.len().min(crate::dsp::MAX_BARS);
+    let n_unique = v.bars.len().min(crate::dsp::MAX_BARS);
+    // Mirror low -> high bands around the center: bass stays in the middle,
+    // treble goes to both edges.
+    let n_bars = display_count(n_unique).min(crate::dsp::MAX_BARS);
     let area_h = v.rows.saturating_sub(FOOTER_HEIGHT).max(5);
 
     // Stack buffers: no per-frame heap allocation for heights.
     let mut bar_h = [0.0f32; crate::dsp::MAX_BARS];
     let mut cap_rows = [0usize; crate::dsp::MAX_BARS];
-    for (i, b) in v.bars.iter().take(n_bars).enumerate() {
-        bar_h[i] = (b * area_h as f32).clamp(0.0, area_h as f32);
-    }
-    for (i, c) in v.peaks.iter().take(n_bars).enumerate() {
-        cap_rows[i] = ((c * area_h as f32).round() as usize).min(area_h);
+    for d in 0..n_bars {
+        let s = spectrum_index(d, n_unique).min(n_unique.saturating_sub(1));
+        if let Some(b) = v.bars.get(s) {
+            bar_h[d] = (b * area_h as f32).clamp(0.0, area_h as f32);
+        }
+        if let Some(c) = v.peaks.get(s) {
+            cap_rows[d] = ((c * area_h as f32).round() as usize).min(area_h);
+        }
     }
 
     let width = n_bars * v.bar_width + n_bars.saturating_sub(1) * v.gap_width;
@@ -58,8 +65,11 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
             frame.push_str(bar_color(row, area_h, 0, n_bars, v.color_mode));
         }
         for i in 0..n_bars {
+            // Frequency colors follow the spectrum (bass = center),
+            // so mirrored bars share the same color.
+            let s = spectrum_index(i, n_unique).min(n_unique.saturating_sub(1));
             if v.use_color && !uniform_row {
-                frame.push_str(bar_color(row, area_h, i, n_bars, v.color_mode));
+                frame.push_str(bar_color(row, area_h, s, n_unique, v.color_mode));
             }
             // Integer part is full blocks, the fraction is 1/8-blocks.
             let fh = bar_h[i];
@@ -77,7 +87,7 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
                     if has_peak {
                         push_peak(frame, v.bar_width, v.use_color);
                         if v.use_color {
-                            frame.push_str(bar_color(row, area_h, i, n_bars, v.color_mode));
+                            frame.push_str(bar_color(row, area_h, s, n_unique, v.color_mode));
                         }
                     } else {
                         for _ in 0..v.bar_width {
@@ -93,7 +103,7 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
                 push_peak(frame, v.bar_width, v.use_color);
                 if v.use_color {
                     // Peak uses its own color; restore the bar color after it.
-                    frame.push_str(bar_color(row, area_h, i, n_bars, v.color_mode));
+                    frame.push_str(bar_color(row, area_h, s, n_unique, v.color_mode));
                 }
             } else {
                 for _ in 0..v.bar_width {

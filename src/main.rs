@@ -8,6 +8,7 @@ mod input;
 mod menu;
 mod solo;
 mod source;
+mod symmetry;
 mod terminal;
 mod theme;
 mod ui;
@@ -145,9 +146,12 @@ fn main() -> std::io::Result<()> {
             frame.reserve(want - frame.capacity());
         }
         // Paused freezes bars and peaks; dt keeps updating so resume is smooth.
+        // Symmetric view: analyzer computes half the bands (low -> high),
+        // the visualizer mirrors them with bass in the center.
         if !ui.paused {
-            let bar_count = ui.current.fit_bar_count(cols, dsp::MAX_BARS);
-            if !analyzer.update(capture.queue(), bar_count, dt) {
+            let display_fit = ui.current.fit_bar_count(cols, dsp::MAX_BARS);
+            let uniq = symmetry::unique_count(display_fit);
+            if !analyzer.update(capture.queue(), uniq, dt) {
                 break;
             }
         }
