@@ -9,7 +9,7 @@ pub fn render_help(frame: &mut String, cols: usize, rows: usize, use_color: bool
         "Keys",
         "",
         "Space / P      pause / resume",
-        "V              toggle layout (Symmetric / Left-Right)",
+        "L              toggle layout (Symmetric / Left-Right)",
         "C              cycle bar color (Height / Frequency / Mono)",
         "T / Tab        theme menu",
         "S              capture source menu",

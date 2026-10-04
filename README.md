@@ -61,7 +61,7 @@ S                      capture source: system mix or one app
 R (in source menu)     refresh the app list
 1 / 2                  quick theme switch
 Space / P              pause / resume
-V                      toggle layout (Symmetric / Left-Right)
+L                      toggle layout (Symmetric / Left-Right)
 C                      cycle bar color (Height / Frequency / Mono)
 H / ? / F1             help overlay, Esc - back
 Q or Ctrl+C            quit

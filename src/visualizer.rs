@@ -173,7 +173,7 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
             )
         }
     };
-    let keys = "T-themes S-source Space-pause V-layout C-color ?-help Q-quit";
+    let keys = "T-themes S-source Space-pause L-layout C-color ?-help Q-quit";
     // Bar rows each end with `\r\n`, so the cursor is already on the first
     // footer line: write status directly, newline only before the keys line.
     // A leading `\r\n` before both lines would make the frame one line
