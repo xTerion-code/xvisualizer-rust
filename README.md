@@ -20,7 +20,8 @@ Terminal ASCII visualizer for system audio: low-latency PulseAudio monitor captu
   Press `T`/`Tab` or any arrow to open the menu, `1`/`2` for a quick switch
 - Startup setup wizard: theme → bar color → layout → capture source
   (`Enter` to apply each step, `Esc` to skip to the visualizer)
-- Pause (`Space`/`P`), spectrum layout toggle (`V`: Symmetric / Left-Right),
+- Pause (`Space`/`P`), sensitivity (`+`/`-`, `G` reset),
+  spectrum layout toggle (`L`: Symmetric / Left-Right),
   help overlay (`H`/`?`/`F1`)
 - Bar count adapts to terminal width (8–64), flicker-free single-write frames
 - Alternate screen: the terminal is restored on exit
@@ -61,6 +62,7 @@ S                      capture source: system mix or one app
 R (in source menu)     refresh the app list
 1 / 2                  quick theme switch
 Space / P              pause / resume
++ / -                  sensitivity up / down, G - reset
 L                      toggle layout (Symmetric / Left-Right)
 C                      cycle bar color (Height / Frequency / Mono)
 H / ? / F1             help overlay, Esc - back
@@ -95,12 +97,12 @@ Rendering depends on the terminal font and width; the bar count scales with the 
 
 ```text
 Pulse monitor → capture thread → short sample queue → Hann + FFT (per frame)
-  → log bands → inertial smoothing → fixed-height frame → stdout
+  → log bands → manual gain → inertial smoothing → fixed-height frame → stdout
 ```
 
 - Capture: blocking `pa_simple` reads of 512 stereo frames (~10.7 ms), explicit low-latency `BufferAttr` (`fragsize` ~10 ms, buffer ~43 ms) instead of the ~2 s server default.
 - Queue: only the newest ~170 ms of mono samples are kept; each frame analyzes the newest 2048-sample window (~43 ms).
-- Spectrum: Hann-windowed forward FFT, peak magnitude per log band, gamma `0.6` so quiet bands stay visible.
+- Spectrum: Hann-windowed forward FFT, peak magnitude per log band, manual gain (`+`/`-`, `G` reset), gamma `0.6` so quiet bands stay visible.
 - Motion: per-bar exponential easing — attack tau ~12 ms (1–2 frames), release tau ~160 ms — peak markers fall linearly in ~0.8 s.
 - Render: one buffered `write` + `flush` per frame at ~120 Hz, cursor homed once (`ESC[H`), no full-screen clear, so no flicker.
 

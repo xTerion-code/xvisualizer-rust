@@ -99,6 +99,24 @@ fn main() -> std::io::Result<()> {
                         }
                     }
                 }
+                UiEvent::GainUp => {
+                    analyzer.adjust_gain(true);
+                    notice = Some((
+                        format!("Sensitivity {:.2}x", analyzer.gain()),
+                        Instant::now(),
+                    ));
+                }
+                UiEvent::GainDown => {
+                    analyzer.adjust_gain(false);
+                    notice = Some((
+                        format!("Sensitivity {:.2}x", analyzer.gain()),
+                        Instant::now(),
+                    ));
+                }
+                UiEvent::GainReset => {
+                    analyzer.reset_gain();
+                    notice = Some(("Sensitivity 1.00x".to_string(), Instant::now()));
+                }
             }
         }
         if !running.load(Ordering::SeqCst) {
@@ -203,6 +221,7 @@ fn main() -> std::io::Result<()> {
                     color_mode: ui.color,
                     layout: ui.layout,
                     paused: ui.paused,
+                    gain: analyzer.gain(),
                 },
             );
         }

@@ -14,6 +14,9 @@ const GAMMA: f32 = 0.6;
 // Fixed reference magnitude: typical full-scale music peaks around
 // 0.01-0.1 here (FFT magnitude / WINDOW).
 const REF_MAG: f32 = 0.03;
+const GAIN_MIN: f32 = 0.2;
+const GAIN_MAX: f32 = 8.0;
+const GAIN_STEP: f32 = 1.25;
 
 pub struct Analyzer {
     fft: std::sync::Arc<dyn Fft<f32>>,
@@ -25,6 +28,7 @@ pub struct Analyzer {
     bars: Vec<f32>,
     caps: Vec<f32>,
     count: usize,
+    gain: f32,
 }
 
 impl Analyzer {
@@ -55,7 +59,24 @@ impl Analyzer {
             bars: vec![0.0f32; MAX_BARS],
             caps: vec![0.0f32; MAX_BARS],
             count: 0,
+            gain: 1.0,
         }
+    }
+
+    pub fn gain(&self) -> f32 {
+        self.gain
+    }
+
+    pub fn adjust_gain(&mut self, up: bool) {
+        if up {
+            self.gain = (self.gain * GAIN_STEP).min(GAIN_MAX);
+        } else {
+            self.gain = (self.gain / GAIN_STEP).max(GAIN_MIN);
+        }
+    }
+
+    pub fn reset_gain(&mut self) {
+        self.gain = 1.0;
     }
 
     /// Returns false when the sample queue is gone and the app should stop.
@@ -103,7 +124,7 @@ impl Analyzer {
                 .max(lo + 1)
                 .min(WINDOW / 2);
             let m = self.mags[lo..hi].iter().copied().fold(0.0f32, f32::max);
-            let norm = (m / REF_MAG).clamp(0.0, 1.0);
+            let norm = (m / REF_MAG * self.gain).clamp(0.0, 1.0);
             let target = norm.powf(GAMMA);
             let b = self.bars[i];
             if target > b {

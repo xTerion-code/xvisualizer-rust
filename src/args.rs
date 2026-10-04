@@ -27,6 +27,7 @@ pub fn print_help() {
     println!("  R (in source menu)     refresh the app list");
     println!("  1 / 2                  quick theme switch");
     println!("  Space / P              pause / resume");
+    println!("  + / -                  sensitivity up / down, G - reset");
     println!("  L                      toggle layout (Symmetric / Left-Right)");
     println!("  C                      cycle bar color");
     println!("  H / ?                  help overlay");

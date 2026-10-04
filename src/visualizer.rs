@@ -20,6 +20,7 @@ pub struct Visualizer<'a> {
     pub color_mode: ColorMode,
     pub layout: LayoutMode,
     pub paused: bool,
+    pub gain: f32,
 }
 
 const PARTS: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
@@ -159,21 +160,23 @@ pub fn render_visualizer(frame: &mut String, v: &Visualizer) {
     let status = match v.notice {
         Some(msg) => truncate_chars(msg, 60).to_string(),
         None if v.paused => format!(
-            "Paused - Space to resume  |  {}  |  {}",
+            "Paused - Space to resume  |  {}  |  {:.1}x  |  {}",
             v.layout.name(),
+            v.gain,
             v.color_mode.name()
         ),
         None => {
             let short = truncate_chars(v.source, 24);
             format!(
-                "{short}  |  {}  |  {}  |  {}",
+                "{short}  |  {}  |  {}  |  {:.1}x  |  {}",
                 v.theme_name,
                 v.layout.name(),
+                v.gain,
                 v.color_mode.name()
             )
         }
     };
-    let keys = "T-themes S-source Space-pause L-layout C-color ?-help Q-quit";
+    let keys = "T-themes S-source Space-pause L-layout +/-gain G-reset C-color ?-help Q-quit";
     // Bar rows each end with `\r\n`, so the cursor is already on the first
     // footer line: write status directly, newline only before the keys line.
     // A leading `\r\n` before both lines would make the frame one line

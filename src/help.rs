@@ -9,6 +9,8 @@ pub fn render_help(frame: &mut String, cols: usize, rows: usize, use_color: bool
         "Keys",
         "",
         "Space / P      pause / resume",
+        "+ / -          sensitivity up / down",
+        "G              reset sensitivity to 1.0x",
         "L              toggle layout (Symmetric / Left-Right)",
         "C              cycle bar color (Height / Frequency / Mono)",
         "T / Tab        theme menu",
