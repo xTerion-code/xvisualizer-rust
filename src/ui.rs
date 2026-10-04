@@ -13,8 +13,15 @@ pub struct UiState {
     pub in_source_menu: bool,
     pub paused: bool,
     pub color: ColorMode,
+    pub color_selected: usize,
+    pub in_color_menu: bool,
     pub layout: LayoutMode,
+    pub layout_selected: usize,
+    pub in_layout_menu: bool,
     pub in_help: bool,
+    // True until the startup wizard (theme -> color -> layout -> source)
+    // completes or is skipped with Esc.
+    pub setup: bool,
 }
 
 // Source switching reroutes PulseAudio and restarts capture, so the handler
@@ -29,7 +36,7 @@ impl UiState {
         Self {
             current: initial,
             selected: initial.index(),
-            // App starts with the theme menu open.
+            // App starts with the setup wizard open (theme first).
             in_menu: true,
             target: CaptureTarget::System,
             apps: Vec::new(),
@@ -37,16 +44,41 @@ impl UiState {
             in_source_menu: false,
             paused: false,
             color: ColorMode::default(),
+            color_selected: ColorMode::default().index(),
+            in_color_menu: false,
             layout: LayoutMode::default(),
+            layout_selected: LayoutMode::default().index(),
+            in_layout_menu: false,
             in_help: false,
+            setup: true,
         }
     }
 
     pub(crate) fn open_menu(&mut self) {
         self.selected = self.current.index();
         self.in_source_menu = false;
+        self.in_color_menu = false;
+        self.in_layout_menu = false;
         self.in_help = false;
         self.in_menu = true;
+    }
+
+    pub(crate) fn open_color_menu(&mut self) {
+        self.color_selected = self.color.index();
+        self.in_menu = false;
+        self.in_source_menu = false;
+        self.in_layout_menu = false;
+        self.in_help = false;
+        self.in_color_menu = true;
+    }
+
+    pub(crate) fn open_layout_menu(&mut self) {
+        self.layout_selected = self.layout.index();
+        self.in_menu = false;
+        self.in_source_menu = false;
+        self.in_color_menu = false;
+        self.in_help = false;
+        self.in_layout_menu = true;
     }
 
     pub(crate) fn step(&mut self, dir: i32) {
@@ -58,6 +90,8 @@ impl UiState {
         self.apps = list_playback_streams();
         self.source_selected = self.target.menu_index(&self.apps);
         self.in_menu = false;
+        self.in_color_menu = false;
+        self.in_layout_menu = false;
         self.in_help = false;
         self.in_source_menu = true;
     }
@@ -76,11 +110,53 @@ impl UiState {
     pub(crate) fn confirm(&mut self) {
         self.current = Theme::all()[self.selected];
         self.in_menu = false;
+        if self.setup {
+            self.open_color_menu();
+        }
     }
 
     pub(crate) fn cancel(&mut self) {
         self.selected = self.current.index();
         self.in_menu = false;
+        self.setup = false;
+    }
+
+    pub(crate) fn color_step(&mut self, dir: i32) {
+        let n = ColorMode::all().len() as i32;
+        self.color_selected = (self.color_selected as i32 + dir).rem_euclid(n) as usize;
+    }
+
+    pub(crate) fn confirm_color(&mut self) {
+        self.color = ColorMode::all()[self.color_selected];
+        self.in_color_menu = false;
+        if self.setup {
+            self.open_layout_menu();
+        }
+    }
+
+    pub(crate) fn cancel_color(&mut self) {
+        self.color_selected = self.color.index();
+        self.in_color_menu = false;
+        self.setup = false;
+    }
+
+    pub(crate) fn layout_step(&mut self, dir: i32) {
+        let n = LayoutMode::all().len() as i32;
+        self.layout_selected = (self.layout_selected as i32 + dir).rem_euclid(n) as usize;
+    }
+
+    pub(crate) fn confirm_layout(&mut self) {
+        self.layout = LayoutMode::all()[self.layout_selected];
+        self.in_layout_menu = false;
+        if self.setup {
+            self.open_source_menu();
+        }
+    }
+
+    pub(crate) fn cancel_layout(&mut self) {
+        self.layout_selected = self.layout.index();
+        self.in_layout_menu = false;
+        self.setup = false;
     }
 
     pub(crate) fn toggle_pause(&mut self) {

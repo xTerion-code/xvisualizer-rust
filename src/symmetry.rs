@@ -8,6 +8,17 @@ pub enum LayoutMode {
 }
 
 impl LayoutMode {
+    pub fn all() -> [LayoutMode; 2] {
+        [LayoutMode::Symmetric, LayoutMode::LeftToRight]
+    }
+
+    pub fn index(self) -> usize {
+        match self {
+            LayoutMode::Symmetric => 0,
+            LayoutMode::LeftToRight => 1,
+        }
+    }
+
     pub fn next(self) -> Self {
         match self {
             LayoutMode::Symmetric => LayoutMode::LeftToRight,
@@ -19,6 +30,13 @@ impl LayoutMode {
         match self {
             LayoutMode::Symmetric => "Symmetric",
             LayoutMode::LeftToRight => "Left-Right",
+        }
+    }
+
+    pub fn desc(self) -> &'static str {
+        match self {
+            LayoutMode::Symmetric => "mirrored, bass in the center",
+            LayoutMode::LeftToRight => "bass left, treble right",
         }
     }
 }

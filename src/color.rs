@@ -7,6 +7,18 @@ pub enum ColorMode {
 }
 
 impl ColorMode {
+    pub fn all() -> [ColorMode; 3] {
+        [ColorMode::Height, ColorMode::Frequency, ColorMode::Mono]
+    }
+
+    pub fn index(self) -> usize {
+        match self {
+            ColorMode::Height => 0,
+            ColorMode::Frequency => 1,
+            ColorMode::Mono => 2,
+        }
+    }
+
     pub fn next(self) -> Self {
         match self {
             ColorMode::Height => ColorMode::Frequency,
@@ -20,6 +32,14 @@ impl ColorMode {
             ColorMode::Height => "Height",
             ColorMode::Frequency => "Frequency",
             ColorMode::Mono => "Mono",
+        }
+    }
+
+    pub fn desc(self) -> &'static str {
+        match self {
+            ColorMode::Height => "green-yellow-red by height",
+            ColorMode::Frequency => "rainbow by frequency",
+            ColorMode::Mono => "uniform white",
         }
     }
 }

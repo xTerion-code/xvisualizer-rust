@@ -27,6 +27,7 @@ fn handle_source_key(state: &mut UiState, key: KeyEvent) -> Action {
         }
         KeyCode::Char('r') | KeyCode::Char('R') => state.refresh_apps(),
         KeyCode::Enter | KeyCode::Char(' ') => {
+            state.setup = false;
             state.in_source_menu = false;
             if state.source_selected == 0 {
                 state.target = CaptureTarget::System;
@@ -39,6 +40,7 @@ fn handle_source_key(state: &mut UiState, key: KeyEvent) -> Action {
         KeyCode::Esc => {
             state.source_selected = state.target.menu_index(&state.apps);
             state.in_source_menu = false;
+            state.setup = false;
         }
         _ => {}
     }
@@ -87,6 +89,12 @@ fn handle_key(state: &mut UiState, key: KeyEvent) -> Action {
     } else if state.in_menu {
         handle_menu_key(state, key);
         Action::Nothing
+    } else if state.in_color_menu {
+        handle_color_key(state, key);
+        Action::Nothing
+    } else if state.in_layout_menu {
+        handle_layout_key(state, key);
+        Action::Nothing
     } else {
         handle_visualizer_key(state, key)
     }
@@ -121,6 +129,45 @@ fn handle_menu_key(state: &mut UiState, key: KeyEvent) -> Action {
     Action::Nothing
 }
 
+fn handle_color_key(state: &mut UiState, key: KeyEvent) -> Action {
+    use crate::color::ColorMode;
+    match key.code {
+        KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('w') => state.color_step(-1),
+        KeyCode::Left | KeyCode::Char('h') => state.color_step(-1),
+        KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => state.color_step(1),
+        KeyCode::Right | KeyCode::Char('l') => state.color_step(1),
+        KeyCode::Char(c) if ('1'..='9').contains(&c) => {
+            let idx = (c as usize) - ('1' as usize);
+            if idx < ColorMode::all().len() {
+                state.color_selected = idx;
+            }
+        }
+        KeyCode::Enter | KeyCode::Char(' ') => state.confirm_color(),
+        KeyCode::Esc => state.cancel_color(),
+        _ => {}
+    }
+    Action::Nothing
+}
+
+fn handle_layout_key(state: &mut UiState, key: KeyEvent) -> Action {
+    use crate::symmetry::LayoutMode;
+    match key.code {
+        KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('w') => state.layout_step(-1),
+        KeyCode::Left | KeyCode::Char('h') => state.layout_step(-1),
+        KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => state.layout_step(1),
+        KeyCode::Right | KeyCode::Char('l') => state.layout_step(1),
+        KeyCode::Char(c) if ('1'..='9').contains(&c) => {
+            let idx = (c as usize) - ('1' as usize);
+            if idx < LayoutMode::all().len() {
+                state.layout_selected = idx;
+            }
+        }
+        KeyCode::Enter | KeyCode::Char(' ') => state.confirm_layout(),
+        KeyCode::Esc => state.cancel_layout(),
+        _ => {}
+    }
+    Action::Nothing
+}
 fn handle_visualizer_key(state: &mut UiState, key: KeyEvent) -> Action {
     match key.code {
         KeyCode::Char('t')

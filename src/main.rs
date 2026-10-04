@@ -145,13 +145,42 @@ fn main() -> std::io::Result<()> {
                 &mut frame,
                 cols,
                 rows,
-                &ui.apps,
-                ui.source_selected,
-                &ui.target,
+                &menu::SourceMenu {
+                    apps: &ui.apps,
+                    selected: ui.source_selected,
+                    target: &ui.target,
+                    setup: ui.setup,
+                },
                 use_color,
             );
         } else if ui.in_menu {
-            menu::render_menu(&mut frame, cols, rows, ui.selected, ui.current, use_color);
+            menu::render_menu(
+                &mut frame,
+                cols,
+                rows,
+                ui.selected,
+                ui.current,
+                ui.setup,
+                use_color,
+            );
+        } else if ui.in_color_menu {
+            menu::render_color_menu(
+                &mut frame,
+                cols,
+                rows,
+                ui.color_selected,
+                ui.color,
+                use_color,
+            );
+        } else if ui.in_layout_menu {
+            menu::render_layout_menu(
+                &mut frame,
+                cols,
+                rows,
+                ui.layout_selected,
+                ui.layout,
+                use_color,
+            );
         } else if ui.in_help {
             help::render_help(&mut frame, cols, rows, use_color);
         } else {

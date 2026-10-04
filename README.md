@@ -18,6 +18,8 @@ Terminal ASCII visualizer for system audio: low-latency PulseAudio monitor captu
 - Two bar themes with an in-program menu (arrows + Enter):
   `Classic` (thin bars with gaps) and `Solid` (wide bars without gaps).
   Press `T`/`Tab` or any arrow to open the menu, `1`/`2` for a quick switch
+- Startup setup wizard: theme → bar color → layout → capture source
+  (`Enter` to apply each step, `Esc` to skip to the visualizer)
 - Pause (`Space`/`P`), spectrum layout toggle (`V`: Symmetric / Left-Right),
   help overlay (`H`/`?`/`F1`)
 - Bar count adapts to terminal width (8–64), flicker-free single-write frames
@@ -114,7 +116,7 @@ src/
   dsp.rs       — Hann window, FFT, log bands, fixed reference, smoothing
   color.rs     — bar color modes (Height / Frequency / Mono)
   theme.rs     — bar-style themes (geometry and names)
-  ui.rs        — UI state (theme, source, pause, color, layout, help)
+  ui.rs        — UI state (theme, source, pause, color, layout, setup, help)
   input.rs     — keyboard decoding: menu / source / visualizer / help keys
   menu.rs      — theme menu and capture-source menu screens
   visualizer.rs — spectrum frame building and footer status
