@@ -60,6 +60,6 @@ pub fn bar_color(
     match mode {
         ColorMode::Height => row_color_height(row, area_h),
         ColorMode::Frequency => freq_color(bar_idx, n_bars),
-        ColorMode::Mono => "\x1b[36m",
+        ColorMode::Mono => "\x1b[37m",
     }
 }
